@@ -1,0 +1,99 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        run: |
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls $ANDROID_HOME/cmdline-tools/
+          yes | sdkmanager --licenses || true
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Install NDK and CMake
+        run: |
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
+          sdkmanager "ndk;27.0.12077973" "cmake;3.22.1"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Firebase config
+        env:
+          GS_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GS_JSON" ]; then echo "$GS_JSON" > app/google-services.json; echo "google-services.json из секрета"; fi
+          [ -f app/google-services.json ] && echo "✅ Firebase подключён" || echo "⚠️ Нет app/google-services.json — вход работать не будет"
+          echo "SHA-1 ключа подписи (добавь в Firebase → Настройки проекта → Android-приложение):"
+          keytool -list -v -keystore app/schoolhub.jks -storepass schoolhub | grep -E "SHA1|SHA256"
+
+      # Лестница сборок: от самой полной к самой простой. Первая успешная — идёт в релиз.
+      - name: "1) Full: llama.cpp b8720 + vision (Gemma 4)"
+        id: s1
+        continue-on-error: true
+        run: gradle assembleDebug -PwithLlama=true -PwithVision=true -PllamaTag=b8720 --no-daemon --stacktrace
+
+      - name: "2) llama.cpp b8720 without vision"
+        id: s2
+        if: steps.s1.outcome == 'failure'
+        continue-on-error: true
+        run: gradle clean assembleDebug -PwithLlama=true -PwithVision=false -PllamaTag=b8720 --no-daemon --stacktrace
+
+      - name: "3) llama.cpp b6550 (older, stable) + vision"
+        id: s3
+        if: steps.s1.outcome == 'failure' && steps.s2.outcome == 'failure'
+        continue-on-error: true
+        run: gradle clean assembleDebug -PwithLlama=true -PwithVision=true -PllamaTag=b6550 --no-daemon --stacktrace
+
+      - name: "4) Fallback without AI engine"
+        id: s4
+        if: steps.s1.outcome == 'failure' && steps.s2.outcome == 'failure' && steps.s3.outcome == 'failure'
+        run: gradle clean assembleDebug -PwithLlama=false --no-daemon --stacktrace
+
+      - name: Prepare APK
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk SchoolHub.apk
+          if [ "${{ steps.s1.outcome }}" = "success" ]; then N="✅ Полная сборка: ИИ + зрение (llama.cpp b8720)";
+          elif [ "${{ steps.s2.outcome }}" = "success" ]; then N="🟡 ИИ без зрения (b8720). Смотри лог шага 1";
+          elif [ "${{ steps.s3.outcome }}" = "success" ]; then N="🟡 ИИ на старом llama.cpp b6550 (без Gemma 4). Смотри лог шагов 1-2";
+          else N="⚠️ Без ИИ-движка. Смотри логи шагов 1-3"; fi
+          echo "NOTE=$N" >> $GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SchoolHub-apk
+          path: SchoolHub.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: SchoolHub • сборка ${{ github.run_number }}
+          body: |
+            ${{ env.NOTE }}
+            Скачай SchoolHub.apk ниже и установи на Android 8.0+ (arm64).
+          files: SchoolHub.apk
+          make_latest: true

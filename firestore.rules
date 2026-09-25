@@ -1,0 +1,37 @@
+rules_version = '2';
+// Правила базы Firestore для «Парты». Вставь в Firebase Console → Firestore Database → Rules → Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function myEmail() { return request.auth.token.email.lower(); }
+    // Владельцы — всегда админы (тот же список в Owners.kt)
+    function isOwner() { return signedIn() && myEmail() in ['mihail2014565@gmail.com', 'netrussia1488@gmail.com']; }
+    function isAdmin() {
+      return isOwner() || (signedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+
+    // Профили: свой видит каждый, все — только админ. Роль/блокировку/почту меняет только админ.
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.role == 'user' && request.resource.data.blocked == false
+        && request.resource.data.email == myEmail();
+      allow update: if isAdmin() || (signedIn() && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'blocked', 'blockReason', 'email', 'createdAt']));
+      allow delete: if isAdmin();
+    }
+
+    // Блокировки по почте: человек видит только свою запись, админ — все.
+    match /banned/{mail} {
+      allow read: if signedIn() && (mail == myEmail() || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // Статистика: пишет любой вошедший (в т.ч. пересылает чужую, пришедшую по Bluetooth), читает только админ.
+    match /stats/{id} {
+      allow create, update: if signedIn() && request.resource.data.size() < 40;
+      allow read, delete: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "46881950345",
+    "project_id": "schoolhub5",
+    "storage_bucket": "schoolhub5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:46881950345:android:e744afdeeed1d1af4f1458",
+        "android_client_info": {
+          "package_name": "com.school.hub"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "46881950345-v0ibv6r7q8vho9au4326jj77fn0ttlmu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.school.hub",
+            "certificate_hash": "941fdb985c8f5678ce64f793e2c88b53b2ab1224"
+          }
+        },
+        {
+          "client_id": "46881950345-p7a3t58rmto9cse6u9o4edb2uc16i2qv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB9mEEqAA5pmunlUNgvgWHRNs3cfscCpLg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "46881950345-p7a3t58rmto9cse6u9o4edb2uc16i2qv.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
