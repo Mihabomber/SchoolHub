@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
@@ -275,7 +276,7 @@ fun AiChatScreen(onBack: () -> Unit, vm: AiChatViewModel = viewModel(factory = A
                         enabled = !s.loading && s.error == null && !vm.ocrBusy,
                     ) {
                         if (vm.ocrBusy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                        else Icon(androidx.compose.material.icons.Icons.Filled.AddPhotoAlternate, "Фото")
+                        else Icon(Icons.Filled.AddPhotoAlternate, "Фото")
                     }
                     OutlinedTextField(
                         value = vm.input, onValueChange = { vm.input = it },
