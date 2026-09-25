@@ -1,7 +1,6 @@
 package com.school.hub.sync
 
 import com.school.hub.core.data.SettingsStore
-import com.school.hub.feature.cheatsheets.data.CheatSheetRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -15,16 +14,24 @@ import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
 
 interface SyncApi {
-    @GET("api/classes/{code}/cheats")
-    suspend fun pull(@Path("code") code: String, @Query("since") since: Long): PullResponse
+    @GET("api/classes/{code}/{collection}")
+    suspend fun pull(
+        @Path("code") code: String,
+        @Path("collection") collection: String,
+        @Query("since") since: Long,
+    ): PullResponse
 
-    @POST("api/classes/{code}/cheats")
-    suspend fun push(@Path("code") code: String, @Body body: PushRequest): PushResponse
+    @POST("api/classes/{code}/{collection}")
+    suspend fun push(
+        @Path("code") code: String,
+        @Path("collection") collection: String,
+        @Body body: PushRequest,
+    ): PushResponse
 }
 
-/** Синхронизация через простой REST-сервер (см. папку server/). */
+/** Синхронизация всех коллекций через REST-сервер (папка server/). */
 class CloudSync(
-    private val repo: CheatSheetRepository,
+    private val collections: List<SyncCollection>,
     private val settings: SettingsStore,
 ) {
     private var cachedUrl: String? = null
@@ -45,7 +52,7 @@ class CloudSync(
             cachedApi = Retrofit.Builder()
                 .baseUrl(url)
                 .client(http)
-                .addConverterFactory(GsonConverterFactory.create())
+                .addConverterFactory(GsonConverterFactory.create(SyncJson.gson))
                 .build()
                 .create(SyncApi::class.java)
             cachedUrl = url
@@ -59,16 +66,20 @@ class CloudSync(
             require(url.isNotBlank()) { "Сервер не настроен" }
             val api = api(url)
             val code = settings.effectiveClassCode
-
-            val dirty = repo.exportDirty()
-            if (dirty.isNotEmpty()) {
-                dirty.chunked(20).forEach { chunk -> api.push(code, PushRequest(chunk)) }
-                repo.markClean(dirty)
+            var sent = 0
+            var received = 0
+            for (c in collections) {
+                val dirty = c.exportDirty()
+                if (dirty.isNotEmpty()) {
+                    dirty.chunked(20).forEach { chunk -> api.push(code, c.name, PushRequest(chunk)) }
+                    c.markClean(dirty)
+                    sent += dirty.size
+                }
+                val res = api.pull(code, c.name, settings.lastSync(c.name))
+                received += c.merge(res.items.orEmpty(), markDirty = false)
+                settings.setLastSync(c.name, res.serverTime)
             }
-            val res = api.pull(code, settings.lastServerSync)
-            val changed = repo.mergeRemote(res.items.orEmpty(), markDirty = false)
-            settings.lastServerSync = res.serverTime
-            "отправлено ${dirty.size}, получено $changed"
+            "отправлено $sent, получено $received"
         }
     }
 }

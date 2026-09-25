@@ -36,8 +36,20 @@ import com.school.hub.feature.cheatsheets.ui.CheatSheetDetailScreen
 import com.school.hub.feature.cheatsheets.ui.CheatSheetEditScreen
 import com.school.hub.feature.cheatsheets.ui.CheatSheetListScreen
 import com.school.hub.feature.home.HomeScreen
-import com.school.hub.feature.soon.ComingSoonScreen
-import com.school.hub.feature.soon.Upcoming
+import androidx.compose.runtime.remember
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.school.hub.SchoolApp
+import com.school.hub.feature.ai.ui.AiChatScreen
+import com.school.hub.feature.ai.ui.AiModelsScreen
+import com.school.hub.feature.focus.FocusScreen
+import com.school.hub.feature.grades.GradesScreen
+import com.school.hub.feature.homework.ui.HomeworkScreen
+import com.school.hub.feature.schedule.ui.ScheduleScreen
+import com.school.hub.feature.settings.SettingsScreen
+import com.school.hub.feature.translator.CameraTranslateScreen
+import com.school.hub.feature.translator.TranslatorScreen
+import com.school.hub.feature.translator.TranslatorViewModel
+import androidx.compose.ui.platform.LocalContext
 import com.school.hub.sync.SyncScreen
 
 private data class TopDest(val route: String, val label: String, val icon: ImageVector)
@@ -117,10 +129,35 @@ fun SchoolHubApp() {
                 )
             }
             composable(Routes.SYNC) { SyncScreen(onBack = { nav.popBackStack() }) }
-            composable(Routes.SCHEDULE) { ComingSoonScreen(Upcoming.SCHEDULE) }
-            composable(Routes.HOMEWORK) { ComingSoonScreen(Upcoming.HOMEWORK) }
-            composable(Routes.AI) { ComingSoonScreen(Upcoming.AI) }
-            composable(Routes.TRANSLATOR) { ComingSoonScreen(Upcoming.TRANSLATOR) }
+            composable(Routes.SCHEDULE) { ScheduleScreen(onOpenSettings = { nav.navigate(Routes.SETTINGS) }) }
+            composable(Routes.HOMEWORK) { HomeworkScreen() }
+            composable(Routes.AI) {
+                val container = (LocalContext.current.applicationContext as SchoolApp).container
+                AiModelsScreen(
+                    onOpenChat = { nav.navigate(Routes.aiChat(it)) },
+                    hasPendingPrompt = container.pendingAiPrompt != null,
+                )
+            }
+            composable(Routes.AI_CHAT, arguments = listOf(navArgument("modelId") { type = NavType.StringType })) {
+                AiChatScreen(onBack = { nav.popBackStack() })
+            }
+            composable(Routes.TRANSLATOR) {
+                TranslatorScreen(onOpenCamera = { nav.navigate(Routes.CAMERA) }, onBack = { nav.popBackStack() })
+            }
+            composable(Routes.CAMERA) { entry ->
+                // Та же ViewModel, что у переводчика: общие языки и модели
+                val parent = remember(entry) { nav.getBackStackEntry(Routes.TRANSLATOR) }
+                val vm: TranslatorViewModel = viewModel(parent, factory = AppViewModelFactory.Factory)
+                CameraTranslateScreen(vm, onBack = { nav.popBackStack() })
+            }
+            composable(Routes.GRADES) { GradesScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.FOCUS) {
+                val container = (LocalContext.current.applicationContext as SchoolApp).container
+                FocusScreen(container.focusTimer, onBack = { nav.popBackStack() })
+            }
+            composable(Routes.SETTINGS) {
+                SettingsScreen(onBack = { nav.popBackStack() }, onOpenSync = { nav.navigate(Routes.SYNC) })
+            }
         }
     }
 }

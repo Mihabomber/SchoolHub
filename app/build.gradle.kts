@@ -5,19 +5,39 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// -PwithLlama=false — собрать без нативного движка llama.cpp (быстрее, ИИ-чат будет недоступен)
+val withLlama: Boolean = (project.findProperty("withLlama") as String?)?.toBoolean() ?: true
+
 android {
     namespace = "com.school.hub"
     compileSdk = 34
+    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "com.school.hub"
-        // 26 (Android 8.0): java.time, adaptive icons, стабильный NNAPI/NEON для llama.cpp.
-        // ML Kit Translation требует 21+, Nearby Connections 16+, так что 26 — с запасом.
+        // 26 (Android 8.0): java.time, адаптивные иконки; ML Kit — 21+, Nearby — 16+,
+        // llama.cpp — arm64 с NEON (на практике Android 8+).
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 4
+        versionName = "1.1.0"
         vectorDrawables { useSupportLibrary = true }
+        buildConfigField("boolean", "WITH_LLAMA", withLlama.toString())
+        ndk { abiFilters += listOf("arm64-v8a") }
+        if (withLlama) {
+            externalNativeBuild {
+                cmake { arguments += listOf("-DCMAKE_BUILD_TYPE=Release") }
+            }
+        }
+    }
+
+    if (withLlama) {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+                version = "3.22.1"
+            }
+        }
     }
 
     buildTypes {
@@ -32,7 +52,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 }
 
@@ -53,17 +76,29 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    // Room (локальная БД)
+    // Room
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
 
-    // Сеть (синхронизация через сервер)
+    // Сеть
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
 
-    // P2P-обмен без интернета: Bluetooth / BLE / Wi-Fi Direct
+    // P2P без интернета
     implementation("com.google.android.gms:play-services-nearby:19.0.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+
+    // Офлайн-переводчик + распознавание текста
+    implementation("com.google.mlkit:translate:17.0.2")
+    implementation("com.google.mlkit:language-id:17.0.4")
+    implementation("com.google.mlkit:text-recognition:16.0.0")
+
+    // Камера
+    implementation("androidx.camera:camera-core:1.3.4")
+    implementation("androidx.camera:camera-camera2:1.3.4")
+    implementation("androidx.camera:camera-lifecycle:1.3.4")
+    implementation("androidx.camera:camera-view:1.3.4")
 
     // Картинки
     implementation("io.coil-kt:coil-compose:2.7.0")

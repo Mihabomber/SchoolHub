@@ -19,6 +19,32 @@ import java.util.UUID
 class ImageStorage(private val context: Context) {
     private val dir: File get() = File(context.filesDir, "cheat_images").apply { mkdirs() }
 
+    /** Декодирует картинку с учётом EXIF-поворота, длинная сторона ≤ maxSide. */
+    suspend fun decodeBitmap(uri: Uri, maxSide: Int = MAX_SIDE): Bitmap? = withContext(Dispatchers.IO) {
+        runCatching {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            var sample = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
+            val raw = context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
+            } ?: return@runCatching null
+            val rotation = readRotation(uri)
+            val scale = minOf(1f, maxSide.toFloat() / maxOf(raw.width, raw.height))
+            if (scale == 1f && rotation == 0f) raw
+            else Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, Matrix().apply { postScale(scale, scale); postRotate(rotation) }, true)
+        }.getOrNull()
+    }
+
+    private fun readRotation(uri: Uri): Float = context.contentResolver.openInputStream(uri)?.use {
+        when (ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+    } ?: 0f
+
     suspend fun import(uri: Uri): String? = withContext(Dispatchers.IO) {
         runCatching {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }

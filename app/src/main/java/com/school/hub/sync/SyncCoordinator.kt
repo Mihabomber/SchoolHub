@@ -5,12 +5,12 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import com.school.hub.core.data.SettingsStore
-import com.school.hub.feature.cheatsheets.data.CheatSheetRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -31,7 +31,7 @@ data class CloudStatus(
 class SyncCoordinator(
     context: Context,
     private val cloud: CloudSync,
-    private val repo: CheatSheetRepository,
+    private val collections: List<SyncCollection>,
     private val settings: SettingsStore,
     private val scope: CoroutineScope,
 ) {
@@ -66,7 +66,9 @@ class SyncCoordinator(
             })
         }
         scope.launch {
-            repo.observeDirtyCount().debounce(2_000).collect { if (it > 0) requestSync() }
+            combine(collections.map { it.observeDirtyCount() }) { counts -> counts.sum() }
+                .debounce(2_000)
+                .collect { if (it > 0) requestSync() }
         }
         requestSync()
     }

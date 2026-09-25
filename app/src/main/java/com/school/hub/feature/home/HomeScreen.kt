@@ -15,6 +15,9 @@ import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -76,18 +79,40 @@ fun HomeScreen(
             }
             item { HeroCard(s, onAdd = { onNavigate(Routes.cheatEdit()) }) }
             item { SyncStatusRow(s, onClick = { onNavigate(Routes.SYNC) }) }
+            item {
+                Card(
+                    onClick = { onNavigate(Routes.SCHEDULE) }, shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Сегодня", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text(s.nowText, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text(
+                            if (s.hwPending == 0) "🎉 Вся домашка сделана" else "📚 Несделанных ДЗ: ${s.hwPending}, на завтра: ${s.hwTomorrow}",
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                }
+            }
             item { Text("Разделы", style = MaterialTheme.typography.titleLarge) }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         FeatureCard("Шпаргалки", "Формулы и правила всего класса", Icons.Filled.Lightbulb, AppGradients.Violet, null, Modifier.weight(1f)) { onNavigate(Routes.CHEATS) }
-                        FeatureCard("Расписание", "Уроки и звонки", Icons.Filled.Schedule, AppGradients.Ocean, "скоро", Modifier.weight(1f)) { onNavigate(Routes.SCHEDULE) }
+                        FeatureCard("Расписание", "Уроки, звонки, напоминания", Icons.Filled.Schedule, AppGradients.Ocean, null, Modifier.weight(1f)) { onNavigate(Routes.SCHEDULE) }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        FeatureCard("Домашка", "Дедлайны и отметки", Icons.Filled.TaskAlt, AppGradients.Sunset, "скоро", Modifier.weight(1f)) { onNavigate(Routes.HOMEWORK) }
-                        FeatureCard("ИИ офлайн", "Чат без интернета", Icons.Filled.AutoAwesome, AppGradients.Candy, "скоро", Modifier.weight(1f)) { onNavigate(Routes.AI) }
+                        FeatureCard("Домашка", "Дедлайны и отметки", Icons.Filled.TaskAlt, AppGradients.Sunset, if (s.hwPending > 0) "${s.hwPending}" else null, Modifier.weight(1f)) { onNavigate(Routes.HOMEWORK) }
+                        FeatureCard("ИИ офлайн", "14 моделей без интернета", Icons.Filled.AutoAwesome, AppGradients.Candy, "NEW", Modifier.weight(1f)) { onNavigate(Routes.AI) }
                     }
-                    FeatureCard("Переводчик", "Текст и камера, работает офлайн", Icons.Filled.Translate, AppGradients.Mint, "скоро", Modifier.fillMaxWidth()) { onNavigate(Routes.TRANSLATOR) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FeatureCard("Переводчик", "Текст и камера офлайн", Icons.Filled.Translate, AppGradients.Mint, null, Modifier.weight(1f)) { onNavigate(Routes.TRANSLATOR) }
+                        FeatureCard("Оценки", "Средний балл и прогноз", Icons.Filled.Star, AppGradients.Violet, null, Modifier.weight(1f)) { onNavigate(Routes.GRADES) }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FeatureCard("Фокус", "Помодоро-таймер для учёбы", Icons.Filled.Timer, AppGradients.Sunset, null, Modifier.weight(1f)) { onNavigate(Routes.FOCUS) }
+                        FeatureCard("Настройки", "Тема, класс, напоминания", Icons.Filled.Settings, AppGradients.Ocean, null, Modifier.weight(1f)) { onNavigate(Routes.SETTINGS) }
+                    }
                 }
             }
             if (s.recent.isNotEmpty()) {

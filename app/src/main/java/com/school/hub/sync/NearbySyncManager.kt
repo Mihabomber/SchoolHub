@@ -16,7 +16,6 @@ import com.google.android.gms.nearby.connection.PayloadCallback
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate
 import com.google.android.gms.nearby.connection.Strategy
 import com.school.hub.core.data.SettingsStore
-import com.school.hub.feature.cheatsheets.data.CheatSheetRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,7 +54,7 @@ data class NearbyState(
  */
 class NearbySyncManager(
     private val context: Context,
-    private val repo: CheatSheetRepository,
+    private val collections: List<SyncCollection>,
     private val settings: SettingsStore,
     private val scope: CoroutineScope,
 ) {
@@ -176,11 +175,12 @@ class NearbySyncManager(
     private fun sendSnapshot(endpointId: String) {
         scope.launch {
             runCatching {
-                val items = repo.exportAll()
+                val data = collections.associate { it.name to it.exportAll() }
+                val count = data.values.sumOf { it.size }
                 val file = withContext(Dispatchers.IO) {
                     val dir = File(context.cacheDir, "nearby_out").apply { mkdirs() }
                     SyncCodec.write(
-                        SyncPacket(1, settings.deviceId, settings.effectiveClassCode, items),
+                        SyncPacket(2, settings.deviceId, settings.effectiveClassCode, data),
                         File(dir, "snapshot_${System.nanoTime()}.json.gz"),
                     )
                 }
@@ -189,8 +189,8 @@ class NearbySyncManager(
                     outgoing[payload.id] = endpointId to file
                     client.sendPayload(endpointId, payload)
                 }
-                _state.update { it.copy(sentTotal = it.sentTotal + items.size) }
-                log("📤 Отправил ${items.size} шт. → ${peerName(endpointId)}")
+                _state.update { it.copy(sentTotal = it.sentTotal + count) }
+                log("📤 Отправил $count записей → ${peerName(endpointId)}")
             }.onFailure { log("Ошибка отправки: ${it.message}") }
         }
     }
@@ -203,7 +203,11 @@ class NearbySyncManager(
             if (packet.classCode != settings.effectiveClassCode) {
                 log("Пропущено: другой класс (${packet.classCode})"); return@runCatching
             }
-            val changed = repo.mergeRemote(packet.items, markDirty = true)
+            var changed = 0
+            val incomingData = packet.collections.orEmpty()
+            for (c in collections) {
+                incomingData[c.name]?.let { changed += c.merge(it, markDirty = true) }
+            }
             _state.update { it.copy(receivedTotal = it.receivedTotal + changed) }
             setPeer(endpointId, peerName(endpointId), PeerStatus.SYNCED)
             log("📥 От ${peerName(endpointId)}: новых/обновлённых $changed")
