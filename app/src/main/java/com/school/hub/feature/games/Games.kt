@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -31,6 +33,36 @@ private enum class Game(val title: String, val emoji: String, val desc: String) 
     TTT_BOT("Крестики-нолики с ботом", "🤖", "Бот играет почти идеально — попробуй не проиграть"),
     TTT_DUO("Крестики-нолики вдвоём", "👥", "На одном экране с другом"),
     G2048("2048", "🔢", "Складывай плитки свайпами"),
+    DICE("Кости", "🎲", "Кидай кубик"),
+    COIN("Орёл и решка", "🪙", "Подбрось монетку"),
+    RPS("Камень-ножницы-бумага", "✊", "Против бота"),
+    GUESS("Угадай число", "🔢", "От 1 до 100 за меньше попыток"),
+    REACTION("Реакция", "⚡", "Жми на зелёный как можно быстрее"),
+    PAIRS("Пары", "🃏", "Найди все 8 пар"),
+    MINES("Сапёр", "💣", "Поле 6×6, 8 мин"),
+    BREAKOUT("Арканоид", "🧱", "Разбей все кирпичи"),
+    PONG("Понг", "🏓", "Против бота до 5 очков"),
+    FLAPPY("Флэппи", "🐤", "Лети между трубами"),
+    CATCH("Ловушка", "🎯", "Лови зелёные, избегай красных"),
+    SIMON("Саймон", "🔔", "Повтори последовательность цветов"),
+    SLIDE("Пятнашки", "🧩", "Собери 3×3"),
+    LIGHTS("Выключи свет", "💡", "Погаси все клетки 5×5"),
+    BULLS("Быки и коровы", "🐂", "Угадай 4 цифры"),
+    HANGMAN("Виселица", "🎪", "Угадай слово по буквам"),
+    MATH("Математика на время", "➗", "Решай 30 секунд"),
+    MAZE("Лабиринт", "🌀", "Доведи мышку к флагу"),
+    MOLE("Крот", "🔨", "Стукни всех за 30 секунд"),
+    STROOP("Цвета-ловушка", "🎨", "Жми цвет, а не слово"),
+    HILO("Больше-меньше", "🃏", "Угадай следующую карту"),
+    BJ("Двадцать одно", "♠️", "Обыграй дилера"),
+    SLOTS("Слоты", "🎰", "Три одинаковых — джекпот"),
+    BATTLE("Морской бой", "⚓", "Потопи флот бота 5×5"),
+    TAPRACE("Тап-гонка", "🏎", "Кто быстрее тапает 5 сек"),
+    DIGITS("Запомни цифры", "🧠", "Память на числа"),
+    HOOPS("Баскетбол", "🏀", "Фликни мяч в кольцо"),
+    FOOTBALL3D("Футбол 3D", "⚽", "Пенальти в 3D: обыграй вратаря"),
+    CUBE3D("Куб 3D", "🧊", "Попади по красной грани"),
+    ANAGRAM("Анаграмма", "📝", "Составь слово из букв"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,8 +78,8 @@ fun GamesScreen(onBack: () -> Unit) {
     }) { inner ->
         Box(Modifier.fillMaxSize().padding(inner).padding(16.dp)) {
             when (game) {
-                null -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Game.entries.forEach { g ->
+                null -> LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(Game.entries) { g ->
                         Card(onClick = { game = g; stats.inc("games") }, shape = RoundedCornerShape(22.dp)) {
                             Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(g.emoji, fontSize = 36.sp)
@@ -61,6 +93,36 @@ fun GamesScreen(onBack: () -> Unit) {
                 Game.TTT_BOT -> TicTacToe(bot = true)
                 Game.TTT_DUO -> TicTacToe(bot = false)
                 Game.G2048 -> Game2048()
+                Game.DICE -> DiceGame()
+                Game.COIN -> CoinGame()
+                Game.RPS -> RpsGame()
+                Game.GUESS -> GuessGame()
+                Game.REACTION -> ReactionGame()
+                Game.PAIRS -> PairsGame()
+                Game.MINES -> MinesGame()
+                Game.BREAKOUT -> BreakoutGame()
+                Game.PONG -> PongGame()
+                Game.FLAPPY -> FlappyGame()
+                Game.CATCH -> CatchGame()
+                Game.SIMON -> SimonGame()
+                Game.SLIDE -> SlideGame()
+                Game.LIGHTS -> LightsGame()
+                Game.BULLS -> BullsGame()
+                Game.HANGMAN -> HangmanGame()
+                Game.MATH -> MathGame()
+                Game.MAZE -> MazeGame()
+                Game.MOLE -> MoleGame()
+                Game.STROOP -> StroopGame()
+                Game.HILO -> HiloGame()
+                Game.BJ -> BjGame()
+                Game.SLOTS -> SlotsGame()
+                Game.BATTLE -> BattleGame()
+                Game.TAPRACE -> TapRaceGame()
+                Game.DIGITS -> DigitsGame()
+                Game.HOOPS -> HoopsGame()
+                Game.FOOTBALL3D -> Football3DGame()
+                Game.CUBE3D -> Cube3DGame()
+                Game.ANAGRAM -> AnagramGame()
             }
         }
     }
@@ -216,15 +278,15 @@ private fun Game2048() {
     var board by remember { mutableStateOf(spawn(spawn(List(16) { 0 }))) }
     var score by remember { mutableIntStateOf(0) }
     val over = (0..3).all { move(board, it).first == board }
-    var acc by remember { mutableStateOf(Offset.Zero) }
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Счёт: $score" + if (over) " · Игра окончена" else "", style = MaterialTheme.typography.titleMedium)
         Column(
             Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(20.dp)).background(Color(0xFFBBADA0)).padding(8.dp)
-                .pointerInput(Unit) {
+                .pointerInput(board) {
+                    var acc = Offset.Zero
                     detectDragGestures(onDragStart = { acc = Offset.Zero }, onDragEnd = {
                         val d = if (abs(acc.x) > abs(acc.y)) (if (acc.x < 0) 0 else 1) else (if (acc.y < 0) 2 else 3)
-                        if (acc.getDistance() > 40) {
+                        if (acc.getDistance() > 24) {
                             val (nb, g) = move(board, d)
                             if (nb != board) { board = spawn(nb); score += g }
                         }

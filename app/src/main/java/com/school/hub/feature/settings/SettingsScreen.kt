@@ -52,6 +52,7 @@ fun SettingsScreen(
     val wifi by st.wifiOnly.collectAsStateWithLifecycle()
     val glass by st.liquidGlass.collectAsStateWithLifecycle()
     val font by st.fontChoice.collectAsStateWithLifecycle()
+    val trAi by st.translatorAi.collectAsStateWithLifecycle()
 
     Scaffold(topBar = {
         TopAppBar(
@@ -104,6 +105,13 @@ fun SettingsScreen(
                     Text("Синхронизация и обмен по Bluetooth", Modifier.weight(1f))
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
                 }
+            }
+            Section("🌐 Переводчик") {
+                SwitchRow("Перевод фото через ИИ (нужна запущенная модель во вкладке ИИ)", trAi) { st.setTranslatorAi(it) }
+                if (!trAi) Text(
+                    "Сейчас перевод всегда мгновенный (без ИИ). Включишь — в камере появится чип «Перевод через ИИ».",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             OutlinedButton(onClick = vm::logout, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) { Text("Выйти из аккаунта") }
             Text(

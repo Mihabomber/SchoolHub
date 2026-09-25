@@ -52,7 +52,8 @@ object AppViewModelFactory {
         }
         initializer {
             val c = container()
-            TranslatorViewModel(c.translatorRepository, c.imageStorage, c.speaker, c.llmEngine) { c.stats.inc("translations") }
+            val aiOn = c.settings.translatorAi.value
+            TranslatorViewModel(c.translatorRepository, c.imageStorage, c.speaker, if (aiOn) c.llmEngine else null, aiAllowed = aiOn) { c.stats.inc("translations") }
         }
         initializer { val c = container(); SettingsViewModel(c.settings, c.reminders, c.auth) }
         initializer { AuthViewModel(container().auth) }

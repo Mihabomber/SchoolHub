@@ -48,6 +48,10 @@ class SettingsStore(context: Context) {
     private val _wifiOnly = bool("wifi_only", true)
     val wifiOnly: StateFlow<Boolean> = _wifiOnly.asStateFlow()
 
+    /** Перевод фото через ИИ: выключен по умолчанию, включается только в настройках. */
+    private val _translatorAi = bool("translator_ai_enabled", false)
+    val translatorAi: StateFlow<Boolean> = _translatorAi.asStateFlow()
+
     fun setUserName(v: String) { prefs.edit().putString(KEY_NAME, v).apply(); _userName.value = v }
 
     fun setClassCode(v: String) {
@@ -76,6 +80,7 @@ class SettingsStore(context: Context) {
     fun setRemindMinutes(v: Int) { prefs.edit().putInt("remind_minutes", v).apply(); _remindMinutes.value = v }
     fun setHomeworkReminders(v: Boolean) { prefs.edit().putBoolean("homework_reminders", v).apply(); _homeworkReminders.value = v }
     fun setWifiOnly(v: Boolean) { prefs.edit().putBoolean("wifi_only", v).apply(); _wifiOnly.value = v }
+    fun setTranslatorAi(v: Boolean) { prefs.edit().putBoolean("translator_ai_enabled", v).apply(); _translatorAi.value = v }
 
     val effectiveClassCode: String get() = _classCode.value.ifBlank { DEFAULT_CLASS }
 

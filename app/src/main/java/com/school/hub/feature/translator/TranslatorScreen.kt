@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.school.hub.core.ui.components.GradientIcon
 import com.school.hub.core.ui.theme.AppGradients
 import com.school.hub.navigation.AppViewModelFactory
@@ -46,6 +47,7 @@ fun TranslatorScreen(
     val clipboard = LocalClipboardManager.current
     var picking by remember { mutableStateOf<Boolean?>(null) } // true — источник, false — перевод
     var managing by remember { mutableStateOf(false) }
+    val downloading by vm.downloadingLangs.collectAsStateWithLifecycle()
 
     val tts = remember { mutableStateOf<TextToSpeech?>(null) }
     var ttsMsg by remember { mutableStateOf<String?>(null) }
@@ -149,6 +151,13 @@ fun TranslatorScreen(
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             vm.status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (downloading.isNotEmpty()) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text(
+                    "Качаю пакеты: " + downloading.joinToString(", ") { vm.repo.displayName(it) } + "…",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+                )
+            }
 
             Card(
                 onClick = onOpenCamera,
@@ -189,6 +198,7 @@ fun TranslatorScreen(
         ManagePacksDialog(
             languages = vm.repo.languages,
             downloaded = vm.downloaded,
+            downloading = downloading,
             name = vm.repo::displayName,
             onDownload = vm::downloadLanguage,
             onDelete = vm::deleteLanguage,
@@ -241,6 +251,7 @@ private fun LangRow(title: String, isDownloaded: Boolean, onClick: () -> Unit) {
 private fun ManagePacksDialog(
     languages: List<String>,
     downloaded: Set<String>,
+    downloading: Set<String> = emptySet(),
     name: (String) -> String,
     onDownload: (String) -> Unit,
     onDelete: (String) -> Unit,
@@ -257,6 +268,8 @@ private fun ManagePacksDialog(
                         Text(name(code), modifier = Modifier.weight(1f))
                         if (code in downloaded) {
                             IconButton(onClick = { onDelete(code) }, enabled = code != "en") { Icon(Icons.Filled.Delete, "Удалить") }
+                        } else if (code in downloading) {
+                            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                         } else {
                             IconButton(onClick = { onDownload(code) }) { Icon(Icons.Filled.CloudDownload, "Скачать") }
                         }

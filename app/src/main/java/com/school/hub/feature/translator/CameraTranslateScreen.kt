@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -94,14 +95,27 @@ fun CameraTranslateScreen(vm: TranslatorViewModel, onBack: () -> Unit) {
         }
 
         Column(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 60.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            FilterChip(
-                selected = vm.aiPhoto, onClick = { vm.aiPhoto = !vm.aiPhoto },
-                label = { Text(if (vm.aiPhoto) "🤖 Перевод через ИИ" else "⚡ Мгновенный перевод", color = Color.White) },
-                colors = FilterChipDefaults.filterChipColors(containerColor = Color.Black.copy(alpha = 0.5f), selectedContainerColor = Color(0xCC5B4CF0)),
-            )
-            if (vm.aiPhoto) Text("ИИ переводит точнее, но это может занять некоторое время.\nБез ИИ перевод моментальный.",
-                color = Color.White, style = MaterialTheme.typography.bodySmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(10.dp)).padding(8.dp))
+            val downloading by vm.downloadingLangs.collectAsStateWithLifecycle()
+            if (downloading.isNotEmpty()) {
+                Surface(shape = RoundedCornerShape(20.dp), color = Color.Black.copy(alpha = 0.6f)) {
+                    Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Качаю языковой пакет…", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            if (vm.aiAllowed) {
+                FilterChip(
+                    selected = vm.aiPhoto, onClick = { vm.aiPhoto = !vm.aiPhoto },
+                    label = { Text(if (vm.aiPhoto) "🤖 Перевод через ИИ" else "⚡ Мгновенный перевод", color = Color.White) },
+                    colors = FilterChipDefaults.filterChipColors(containerColor = Color.Black.copy(alpha = 0.5f), selectedContainerColor = Color(0xCC5B4CF0)),
+                )
+                if (vm.aiPhoto) Text("ИИ переводит точнее, но это может занять некоторое время.\nБез ИИ перевод моментальный.",
+                    color = Color.White, style = MaterialTheme.typography.bodySmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(10.dp)).padding(8.dp))
+            }
         }
 
         if (vm.cameraBusy) {

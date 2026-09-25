@@ -161,6 +161,13 @@ fun SyncScreen(
                     Spacer(Modifier.width(8.dp))
                     Text(if (cloud.syncing) "Синхронизируем…" else "Синхронизировать сейчас")
                 }
+                Text(
+                    "Не доходит до друга в другом городе? Проверь: код класса буква в букву одинаковый у обоих, " +
+                        "нажми «Синхронизировать сейчас» при включённом интернете, подожди ~30 секунд и нажми ещё раз — " +
+                        "сначала ты, потом друг. Чат и шпоры едут одним каналом.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             Text(

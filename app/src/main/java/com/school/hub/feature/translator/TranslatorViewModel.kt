@@ -25,6 +25,8 @@ class TranslatorViewModel(
     private val images: ImageStorage,
     private val speaker: Speaker? = null,
     private val engine: com.school.hub.feature.ai.engine.LlmEngine? = null,
+    /** ИИ разрешён настройкой (переключатель в Настройках). Без него чип скрыт, перевод мгновенный. */
+    val aiAllowed: Boolean = true,
     private val onTranslated: () -> Unit = {},
 ) : ViewModel() {
     /** Перевод фото через ИИ (медленнее, но понимает контекст). */
@@ -122,7 +124,7 @@ class TranslatorViewModel(
                 if (blocks.isEmpty()) { camera = CameraResult(bmp, emptyList()); status = "Текст не найден"; return@runCatching }
                 val src = if (source != AUTO) source else repo.detect(blocks.joinToString(" ") { it.text }) ?: "en"
                 camera = CameraResult(bmp, blocks)
-                if (aiPhoto) {
+                if (aiPhoto && aiAllowed) {
                     val e = engine
                     if (e == null || e.loadedModelId == null) {
                         status = "🤖 ИИ-модель не загружена — открой вкладку ИИ и запусти модель. Перевожу обычным способом."

@@ -225,8 +225,8 @@ class MqttSync(
         private const val IV_LEN = 12
         private const val KEY_ITER = 50_000
         private const val QUIET_MS = 1_500L
-        private const val SNAPSHOT_TIMEOUT_MS = 15_000L
-        private const val LIVE_WINDOW_MS = 3_000L
+        private const val SNAPSHOT_TIMEOUT_MS = 25_000L
+        private const val LIVE_WINDOW_MS = 5_000L
         private const val PACING_MS = 30L
         private const val MAX_PAYLOAD = 12L * 1024 * 1024
 
@@ -234,6 +234,7 @@ class MqttSync(
         private val DEFAULT_BROKERS = listOf(
             "ssl://broker.hivemq.com:8883",
             "ssl://broker.emqx.io:8883",
+            "ssl://test.mosquitto.org:8883",
         )
     }
 }
