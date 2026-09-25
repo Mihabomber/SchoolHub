@@ -54,7 +54,7 @@ class HomeworkViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeworkUiState())
 
-    fun setFilter(f: HwFilter) { filter = f }
+    fun selectFilter(f: HwFilter) { filter = f }
     fun toggle(uuid: String) = viewModelScope.launch { repo.toggleDone(uuid) }
     fun delete(uuid: String) = viewModelScope.launch { repo.delete(uuid) }
 

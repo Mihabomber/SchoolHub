@@ -77,7 +77,7 @@ fun HomeworkScreen(vm: HomeworkViewModel = viewModel(factory = AppViewModelFacto
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(HwFilter.entries) { f ->
                         FilterChip(
-                            selected = vm.filter == f, onClick = { vm.setFilter(f) },
+                            selected = vm.filter == f, onClick = { vm.selectFilter(f) },
                             label = { Text(if (f == HwFilter.OVERDUE && s.overdue > 0) "${f.title} · ${s.overdue}" else f.title) },
                         )
                     }
