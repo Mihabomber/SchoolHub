@@ -19,6 +19,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -730,15 +731,17 @@ private val cubeFaces = listOf(
 
 private data class FaceDraw(val idx: Int, val pts: List<Offset>, val facing: Float, val depth: Float)
 
-/** Кадр куба в виртуальных координатах 1000×1000, дальние грани первыми. */
-private fun cubeFrame(ax: Float, ay: Float): List<FaceDraw> {
+/** Кадр куба в пикселях канваса шириной w, дальние грани первыми. */
+private fun cubeFrame(ax: Float, ay: Float, w: Float): List<FaceDraw> {
     val rot = cubeVerts.map { rotY(rotX(it, ax), ay) }
-    val proj = rot.map { projPt(it, 5f, 220f, 500f, 500f) }
+    val proj = rot.map { projPt(it, 5f, 0.22f * w, 0.5f * w, 0.5f * w) }
     return cubeFaces.indices.map { fi ->
         val vs = cubeFaces[fi].map { rot[it] }
         val n = faceNormal(vs[0], vs[1], vs[2])
         val len = sqrt(n.x * n.x + n.y * n.y + n.z * n.z) + 0.0001f
-        FaceDraw(fi, cubeFaces[fi].map { vi -> proj[vi] }, n.z / len, vs.sumOf { it.z } / 4f)
+        var depth = 0f
+        vs.forEach { depth += it.z }
+        FaceDraw(fi, cubeFaces[fi].map { vi -> proj[vi] }, n.z / len, depth / 4f)
     }.sortedBy { it.depth }
 }
 
@@ -753,7 +756,8 @@ fun Cube3DGame() {
     var time by remember { mutableIntStateOf(30) }
     var playing by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf("Попади по красной грани!") }
-    val frame = remember(ax, ay) { cubeFrame(ax, ay) }
+    var vw by remember { mutableFloatStateOf(1000f) }
+    val frame = remember(ax, ay, vw) { cubeFrame(ax, ay, vw) }
     val currentFrame by rememberUpdatedState(frame)
     LaunchedEffect(playing) {
         if (playing) {
@@ -773,12 +777,12 @@ fun Cube3DGame() {
         Canvas(
             Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(20.dp))
                 .background(Color(0xFF101020))
+                .onSizeChanged { vw = it.width.toFloat() }
                 .pointerInput(playing) {
                     detectTapGestures { tap ->
                         if (!playing) return@detectTapGestures
                         shots++
-                        val v = Offset(tap.x / size.width * 1000f, tap.y / size.height * 1000f)
-                        val hit = currentFrame.asReversed().firstOrNull { f -> pointInPoly(v, f.pts) }
+                        val hit = currentFrame.asReversed().firstOrNull { f -> pointInPoly(tap, f.pts) }
                         if (hit != null && hit.idx == 1) {
                             score++
                             msg = "Точно! 🎯"
@@ -791,21 +795,18 @@ fun Cube3DGame() {
                     detectDragGestures { _, d -> ax += d.y * 0.01f; ay += d.x * 0.01f }
                 },
         ) {
-            val s = size.width / 1000f
-            scale(s, s) {
-                frame.forEach { f ->
-                    if (f.pts.size < 3) return@forEach
-                    val path = Path().apply {
-                        moveTo(f.pts[0].x, f.pts[0].y)
-                        for (k in 1 until f.pts.size) lineTo(f.pts[k].x, f.pts[k].y)
-                        close()
-                    }
-                    val base = if (f.idx == 1) Color(0xFFE74C3C) else Color(0xFF3498DB)
-                    val shade = 0.35f + 0.65f * f.facing.coerceIn(0f, 1f)
-                    drawPath(path, base.copy(alpha = 0.55f + 0.45f * shade))
-                    for (k in f.pts.indices) {
-                        drawLine(Color.White, f.pts[k], f.pts[(k + 1) % f.pts.size], 10f)
-                    }
+            frame.forEach { f ->
+                if (f.pts.size < 3) return@forEach
+                val path = Path().apply {
+                    moveTo(f.pts[0].x, f.pts[0].y)
+                    for (k in 1 until f.pts.size) lineTo(f.pts[k].x, f.pts[k].y)
+                    close()
+                }
+                val base = if (f.idx == 1) Color(0xFFE74C3C) else Color(0xFF3498DB)
+                val shade = 0.35f + 0.65f * f.facing.coerceIn(0f, 1f)
+                drawPath(path, base.copy(alpha = 0.55f + 0.45f * shade))
+                for (k in f.pts.indices) {
+                    drawLine(Color.White, f.pts[k], f.pts[(k + 1) % f.pts.size], 4f)
                 }
             }
         }
@@ -832,7 +833,7 @@ fun Football3DGame() {
     val over = round > total
     LaunchedEffect(phase) {
         if (phase == 1) {
-            keeperTo = (target.x + (-0.25f..0.25f).random()).let { (it as Float).coerceIn(0.05f, 0.95f) }
+            keeperTo = (target.x + (Math.random().toFloat() - 0.5f) * 0.5f).coerceIn(0.05f, 0.95f)
             val k0 = keeper
             var i = 0
             while (i < 20) {
