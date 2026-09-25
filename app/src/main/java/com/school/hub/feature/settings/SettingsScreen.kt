@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.school.hub.BuildConfig
 import com.school.hub.core.data.SettingsStore
@@ -22,7 +23,7 @@ import com.school.hub.navigation.AppViewModelFactory
 import com.school.hub.reminders.ReminderScheduler
 
 class SettingsViewModel(val settings: SettingsStore, private val reminders: ReminderScheduler, val auth: com.school.hub.feature.auth.AuthRepository) : ViewModel() {
-    fun logout() = androidx.lifecycle.viewModelScope.launch { auth.logout() }
+    fun logout() = viewModelScope.launch { auth.logout() }
     var name by mutableStateOf(settings.userName.value)
         private set
     var classCode by mutableStateOf(settings.classCode.value)
