@@ -152,7 +152,9 @@ private fun SignInForm(vm: AuthViewModel) {
         ) { Text(if (pass2.isNotEmpty() && pass != pass2) "Пароли не совпадают" else "Создать аккаунт") }
     } else {
         Button(onClick = { vm.login(email, pass) }, enabled = !vm.busy, modifier = Modifier.fillMaxWidth().height(50.dp)) { Text("Войти") }
-        TextButton(onClick = { vm.reset(email) }, modifier = Modifier.align(Alignment.End)) { Text("Забыл пароль?") }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = { vm.reset(email) }) { Text("Забыл пароль?") }
+        }
     }
     if (vm.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     Row(verticalAlignment = Alignment.CenterVertically) {

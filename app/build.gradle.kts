@@ -94,6 +94,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.5")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.5")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.5")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.5")
+    // Guava ListenableFuture — нужен CameraX (PreviewView / ProcessCameraProvider)
+    implementation("com.google.guava:guava:32.1.2-android")
     implementation("androidx.navigation:navigation-compose:2.8.0")
 
     implementation("androidx.compose.ui:ui")

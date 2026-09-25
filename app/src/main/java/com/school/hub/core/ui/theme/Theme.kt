@@ -103,6 +103,13 @@ val AppSans = FontFamily(
 val AppSerif = FontFamily(Font(R.font.app_serif_regular, FontWeight.Normal), Font(R.font.app_serif_bold, FontWeight.Bold))
 val AppMono = FontFamily(Font(R.font.app_mono_regular, FontWeight.Normal), Font(R.font.app_mono_bold, FontWeight.Bold))
 
+/** Короткие алиасы семейств (используются экранами: AppFonts.mono и т.д.). */
+object AppFonts {
+    val sans = AppSans
+    val serif = AppSerif
+    val mono = AppMono
+}
+
 /** 0 — Noto Sans (фирменный), 1 — с засечками, 2 — моноширинный, 3 — системный. */
 val FontChoices = listOf("Фирменный", "С засечками", "Моно", "Системный")
 
