@@ -53,6 +53,9 @@ fun SyncScreen(
     val cloud by vm.cloudStatus.collectAsStateWithLifecycle()
     var permissionDenied by remember { mutableStateOf(false) }
 
+    // Открыли экран — сразу синхронизируемся (пока приложение открыто).
+    LaunchedEffect(Unit) { vm.syncCloud() }
+
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
         if (res.values.all { it }) { permissionDenied = false; vm.startNearby() } else permissionDenied = true
     }
@@ -65,7 +68,7 @@ fun SyncScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Обмен шпаргалками") },
+                title = { Text("Синхронизация") },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") } },
             )
         },
@@ -99,12 +102,23 @@ fun SyncScreen(
                     supportingText = { Text("Только латиница, цифры, - и _") },
                     shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
                 )
+                if (vm.isDefaultCode) {
+                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.errorContainer) {
+                        Text(
+                            "⚠️ Код «my-class» общий для всех — придумай свой, пока его не видят посторонние. " +
+                                "Код класса шифрует все данные обмена.",
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                    }
+                }
             }
 
             // ---------- Рядом: Bluetooth / Wi-Fi Direct ----------
             NearbyCard(nearby, permissionDenied, onStart = startNearby, onStop = vm::stopNearby)
 
-            // ---------- Интернет ----------
+            // ---------- Интернет: бесплатный MQTT-брокер ----------
             SectionCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     GradientIcon(if (online) Icons.Filled.Cloud else Icons.Filled.CloudOff, if (online) AppGradients.Ocean else AppGradients.Night)
@@ -112,15 +126,23 @@ fun SyncScreen(
                     Column(Modifier.weight(1f)) {
                         Text("Через интернет", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            if (online) "Интернет есть — синхронизация автоматическая" else "Интернета нет",
+                            if (online) "Бесплатно и на любом расстоянии — через открытый MQTT-брокер, данные зашифрованы кодом класса"
+                            else "Интернета нет — синхронизируемся, когда появится сеть",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
                 OutlinedTextField(
+                    value = vm.mqttBroker, onValueChange = vm::onMqttBroker, singleLine = true,
+                    label = { Text("Брокер (необязательно)") },
+                    placeholder = { Text("по умолчанию: broker.hivemq.com") },
+                    supportingText = { Text("Пусто — открытые бесплатные брокеры") },
+                    shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
                     value = vm.serverUrl, onValueChange = vm::onServerUrl, singleLine = true,
-                    label = { Text("Адрес сервера класса") },
+                    label = { Text("Свой сервер (необязательно)") },
                     placeholder = { Text("https://my-class.onrender.com") },
                     shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
                 )
@@ -131,20 +153,22 @@ fun SyncScreen(
                     )
                 }
                 FilledTonalButton(
-                    onClick = vm::syncCloud, enabled = !cloud.syncing && online && vm.serverUrl.isNotBlank(),
+                    onClick = vm::syncCloud, enabled = !cloud.syncing && online,
                     modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
                 ) {
                     if (cloud.syncing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     else Icon(Icons.Filled.Sync, null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Синхронизировать сейчас")
+                    Text(if (cloud.syncing) "Синхронизируем…" else "Синхронизировать сейчас")
                 }
             }
 
             Text(
-                "Как это работает: каждое устройство хранит все шпаргалки класса. При встрече телефоны " +
-                    "обмениваются изменениями и передают их дальше, поэтому новая шпаргалка доходит до всех, " +
-                    "даже если вы никогда не были рядом одновременно.",
+                "Как это работает: каждое устройство хранит все данные класса (шпаргалки, расписание, " +
+                    "домашку, звонки и оценки). Изменения уходят на бесплатный брокер и ждут там, пока " +
+                    "одноклассники откроют приложение — синхронизация работает на любом расстоянии, даже " +
+                    "если вы никогда не были онлайн одновременно. Всё зашифровано кодом класса: брокер " +
+                    "видит только шифротекст.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )

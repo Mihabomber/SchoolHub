@@ -24,12 +24,14 @@ data class CloudStatus(
 )
 
 /**
- * Стратегия: есть интернет и сервер → синхронизируемся автоматически
- * (при старте, при появлении сети и после каждой правки).
+ * Стратегия: при открытом приложении есть интернет → синхронизируемся автоматически
+ * (при старте, при появлении сети и после каждой правки) через бесплатный MQTT-брокер;
+ * если задан свой сервер — дополнительно шлём и на него.
  * Нет интернета → пользователь включает обмен по Bluetooth/Wi-Fi Direct (NearbySyncManager).
  */
 class SyncCoordinator(
     context: Context,
+    private val mqtt: MqttSync,
     private val cloud: CloudSync,
     private val collections: List<SyncCollection>,
     private val settings: SettingsStore,
@@ -78,24 +80,34 @@ class SyncCoordinator(
     }
 
     private suspend fun syncNow() {
-        if (settings.serverUrl.value.isBlank()) {
-            _status.update { it.copy(syncing = false, message = "Сервер не указан — работает обмен по Bluetooth", isError = false) }
-            return
-        }
         if (!_online.value) {
-            _status.update { it.copy(syncing = false, message = "Нет интернета — используй обмен рядом", isError = false) }
+            _status.update { it.copy(syncing = false, message = "Нет интернета — синхронизируемся при появлении сети или обменяйся по Bluetooth", isError = false) }
             return
         }
         if (!lock.tryLock()) return
         try {
             _status.update { it.copy(syncing = true, message = "Синхронизация…", isError = false) }
-            cloud.sync()
-                .onSuccess { msg ->
-                    _status.value = CloudStatus(false, "Готово: $msg", false, System.currentTimeMillis())
-                }
-                .onFailure { e ->
-                    _status.update { it.copy(syncing = false, message = "Ошибка: ${e.message ?: e.javaClass.simpleName}", isError = true) }
-                }
+            val done = mutableListOf<String>()
+            val errors = mutableListOf<String>()
+
+            mqtt.sync()
+                .onSuccess { done += it }
+                .onFailure { errors += it.message ?: it.javaClass.simpleName }
+
+            if (settings.serverUrl.value.isNotBlank()) {
+                cloud.sync()
+                    .onSuccess { done += "сервер: $it" }
+                    .onFailure { errors += "сервер: " + (it.message ?: it.javaClass.simpleName) }
+            }
+
+            _status.value = when {
+                done.isNotEmpty() && errors.isEmpty() ->
+                    CloudStatus(false, "Готово: ${done.joinToString(" · ")}", false, System.currentTimeMillis())
+                done.isNotEmpty() ->
+                    CloudStatus(false, "Готово: ${done.joinToString(" · ")} (не получилось: ${errors.joinToString("; ")})", false, System.currentTimeMillis())
+                else ->
+                    CloudStatus(false, "Ошибка: ${errors.joinToString("; ")}", true, System.currentTimeMillis())
+            }
         } finally {
             lock.unlock()
         }

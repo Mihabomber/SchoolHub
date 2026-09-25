@@ -17,10 +17,15 @@ class SyncViewModel(
         private set
     var serverUrl by mutableStateOf(settings.serverUrl.value)
         private set
+    var mqttBroker by mutableStateOf(settings.mqttBroker.value)
+        private set
 
     val nearbyState = nearby.state
     val online = coordinator.online
     val cloudStatus = coordinator.status
+
+    /** Код по умолчанию знают все — с ним чужие с тем же кодом увидят данные. */
+    val isDefaultCode: Boolean get() = classCode == SettingsStore.DEFAULT_CLASS
 
     fun onUserName(v: String) { userName = v; settings.setUserName(v) }
 
@@ -31,6 +36,7 @@ class SyncViewModel(
     }
 
     fun onServerUrl(v: String) { serverUrl = v; settings.setServerUrl(v) }
+    fun onMqttBroker(v: String) { mqttBroker = v; settings.setMqttBroker(v) }
 
     fun syncCloud() = coordinator.requestSync()
     fun startNearby() = nearby.start()

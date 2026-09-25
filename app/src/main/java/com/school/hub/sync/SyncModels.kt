@@ -31,6 +31,11 @@ data class HomeworkDto(
     val createdAt: Long, val updatedAt: Long, val deleted: Boolean, val originDevice: String?,
 )
 
+data class GradeDto(
+    val uuid: String, val subject: String, val value: Int, val weight: Int, val date: Long,
+    val updatedAt: Long, val deleted: Boolean, val originDevice: String?,
+)
+
 /** Снимок всех коллекций для P2P-обмена. */
 data class SyncPacket(
     val version: Int,
@@ -43,7 +48,7 @@ data class PullResponse(val serverTime: Long, val items: List<JsonObject>?)
 data class PushRequest(val items: List<JsonObject>)
 data class PushResponse(val accepted: Int, val serverTime: Long)
 
-/** Любая синхронизируемая коллекция (шпаргалки, уроки, звонки, домашка). */
+/** Любая синхронизируемая коллекция (шпаргалки, уроки, звонки, домашка, оценки). */
 interface SyncCollection {
     val name: String
     fun observeDirtyCount(): Flow<Int>

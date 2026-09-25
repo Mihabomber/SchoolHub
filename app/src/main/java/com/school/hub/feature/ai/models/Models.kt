@@ -116,14 +116,20 @@ class ModelDownloader(private val context: Context, private val settings: Settin
     val dir: File get() = (context.getExternalFilesDir("models") ?: File(context.filesDir, "models")).apply { mkdirs() }
     fun file(m: LlmModel) = File(dir, m.fileName)
     private fun key(m: LlmModel) = "dl_${m.id}"
+    private fun mirrorKey(m: LlmModel) = "dl_mirror_${m.id}"
 
     fun freeSpaceMb(): Long = runCatching { StatFs(dir.absolutePath).availableBytes / (1024 * 1024) }.getOrDefault(0L)
 
     fun start(m: LlmModel, wifiOnly: Boolean): Result<Unit> = runCatching {
         require(freeSpaceMb() > m.sizeMb + 200) { "Мало места: нужно ${m.sizeMb + 200} МБ, свободно ${freeSpaceMb()} МБ" }
         failures.remove(m.id)
+        settings.remove(mirrorKey(m)) // ручной запуск — снова основной адрес
         file(m).delete()
-        val req = DownloadManager.Request(Uri.parse(m.url))
+        enqueue(m, m.url, wifiOnly)
+    }
+
+    private fun enqueue(m: LlmModel, url: String, wifiOnly: Boolean) {
+        val req = DownloadManager.Request(Uri.parse(url))
             .setTitle("SchoolHub: ${m.name}")
             .setDescription("Скачивание офлайн-модели ИИ")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
@@ -133,10 +139,24 @@ class ModelDownloader(private val context: Context, private val settings: Settin
         settings.putLong(key(m), dm.enqueue(req))
     }
 
+    /** Ошибка DownloadManager → человеческая причина. */
+    private fun reasonText(reason: Int): String = when (reason) {
+        DownloadManager.ERROR_FILE_ERROR -> "не удалось сохранить файл (проверь место)"
+        DownloadManager.ERROR_UNHANDLED_HTTP_CODE -> "сайт вернул неожиданный код ответа"
+        DownloadManager.ERROR_HTTP_DATA_ERROR -> "сайт не отдал файл (сеть блокирует загрузку)"
+        DownloadManager.ERROR_CANNOT_RESUME -> "не удалось продолжить загрузку"
+        DownloadManager.ERROR_FILE_ALREADY_EXISTS -> "файл уже существует"
+        DownloadManager.ERROR_INSUFFICIENT_SPACE -> "мало места на устройстве"
+        DownloadManager.ERROR_TOO_MANY_REDIRECTS -> "слишком много перенаправлений"
+        DownloadManager.ERROR_DEVICE_NOT_FOUND -> "устройство недоступно"
+        else -> "код ошибки $reason"
+    }
+
     fun cancel(m: LlmModel) {
         val id = settings.getLong(key(m))
         if (id >= 0) runCatching { dm.remove(id) }
         settings.remove(key(m))
+        settings.remove(mirrorKey(m))
         file(m).delete()
     }
 
@@ -157,11 +177,29 @@ class ModelDownloader(private val context: Context, private val settings: Settin
             val total = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
             val mb = 1024L * 1024L
             return when (st) {
-                DownloadManager.STATUS_SUCCESSFUL -> { settings.remove(key(m)); ModelStatus.Ready }
+                DownloadManager.STATUS_SUCCESSFUL -> {
+                    settings.remove(key(m)); settings.remove(mirrorKey(m))
+                    failures.remove(m.id)
+                    ModelStatus.Ready
+                }
                 DownloadManager.STATUS_FAILED -> {
                     val reason = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
                     settings.remove(key(m)); file(m).delete()
-                    val msg = "Ошибка скачивания (код $reason)"
+                    // Первый сбой → пробуем зеркало hf-mirror.com (Hugging Face иногда недоступен).
+                    val mirrored = settings.getLong(mirrorKey(m)) >= 0
+                    if (!mirrored) {
+                        settings.putLong(mirrorKey(m), 1L)
+                        val mirrorUrl = m.url.replace("https://huggingface.co", MIRROR_HF)
+                        runCatching {
+                            require(freeSpaceMb() > m.sizeMb + 200) { "Мало места" }
+                            enqueue(m, mirrorUrl, settings.wifiOnly.value)
+                        }.onSuccess {
+                            return ModelStatus.Downloading(0, m.sizeMb.toLong(), false)
+                        }.onFailure {
+                            settings.remove(mirrorKey(m))
+                        }
+                    }
+                    val msg = "Не скачалось: ${reasonText(reason)}. Нажми «Скачать» ещё раз или смени сеть."
                     failures[m.id] = msg
                     ModelStatus.Failed(msg)
                 }
@@ -177,4 +215,9 @@ class ModelDownloader(private val context: Context, private val settings: Settin
             delay(700)
         }
     }.flowOn(Dispatchers.IO)
+
+    companion object {
+        /** Зеркало Hugging Face (работает, когда основной сайт заблокирован/недоступен). */
+        private const val MIRROR_HF = "https://hf-mirror.com"
+    }
 }

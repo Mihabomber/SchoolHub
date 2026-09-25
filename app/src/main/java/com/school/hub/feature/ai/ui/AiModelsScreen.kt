@@ -249,7 +249,7 @@ private fun ModelCard(
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "${status.downloadedMb} / ${status.totalMb} МБ" + if (status.paused) " · ждёт Wi-Fi/сеть" else "",
+                            "${status.downloadedMb} / ${status.totalMb} МБ" + if (status.paused) " · ждёт Wi-Fi (или выключи «Скачивать только по Wi-Fi»)" else "",
                             style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
                         )
                         TextButton(onClick = onCancel) { Icon(Icons.Filled.Close, null); Text(" Отмена") }

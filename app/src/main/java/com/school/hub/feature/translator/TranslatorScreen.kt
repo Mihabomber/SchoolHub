@@ -1,5 +1,7 @@
 package com.school.hub.feature.translator
 
+import android.content.Intent
+import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -46,10 +48,45 @@ fun TranslatorScreen(
     var managing by remember { mutableStateOf(false) }
 
     val tts = remember { mutableStateOf<TextToSpeech?>(null) }
+    var ttsMsg by remember { mutableStateOf<String?>(null) }
     DisposableEffect(Unit) {
         var engine: TextToSpeech? = null
-        engine = TextToSpeech(context) { st -> if (st == TextToSpeech.SUCCESS) tts.value = engine }
+        engine = TextToSpeech(context) { st ->
+            if (st == TextToSpeech.SUCCESS) {
+                tts.value = engine
+                ttsMsg = null
+            } else {
+                ttsMsg = "Озвучка не работает — нет движка. Нажми на колокол, откроются настройки озвучки."
+            }
+        }
         onDispose { engine?.shutdown() }
+    }
+
+    fun openTtsSettings() {
+        val direct = Intent("android.settings.TTS_SETTINGS")
+        val ok = runCatching { context.startActivity(direct); true }.getOrElse {
+            runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)); true }.getOrElse { false }
+        }
+        if (!ok) ttsMsg = "Не удалось открыть настройки озвучки"
+    }
+
+    val speak = {
+        val engine = tts.value
+        if (engine == null) {
+            ttsMsg = "Движок озвучки не установлен — открываю настройки…"
+            openTtsSettings()
+        } else {
+            val locale = Locale.forLanguageTag(vm.target)
+            val available = engine.isLanguageAvailable(locale)
+            if (available < 0) {
+                ttsMsg = "Нет голоса для языка «${vm.repo.displayName(vm.target)}» — открываю настройки озвучки…"
+                openTtsSettings()
+            } else {
+                engine.language = locale
+                val res = engine.speak(vm.output, TextToSpeech.QUEUE_FLUSH, null, "tr")
+                ttsMsg = if (res == TextToSpeech.SUCCESS) null else "Не удалось озвучить текст"
+            }
+        }
     }
 
     Scaffold(
@@ -103,18 +140,13 @@ fun TranslatorScreen(
                     if (vm.output.isNotBlank()) {
                         Row {
                             IconButton(onClick = { clipboard.setText(AnnotatedString(vm.output)) }) { Icon(Icons.Filled.ContentCopy, "Копировать") }
-                            IconButton(
-                                onClick = {
-                                    tts.value?.let { t ->
-                                        t.language = Locale.forLanguageTag(vm.target)
-                                        t.speak(vm.output, TextToSpeech.QUEUE_FLUSH, null, "tr")
-                                    }
-                                },
-                                enabled = tts.value != null,
-                            ) { Icon(Icons.AutoMirrored.Filled.VolumeUp, "Озвучить") }
+                            IconButton(onClick = { speak() }) { Icon(Icons.AutoMirrored.Filled.VolumeUp, "Озвучить") }
                         }
                     }
                 }
+            }
+            ttsMsg?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             vm.status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 

@@ -33,7 +33,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/' || url.pathname === '/health') return send(res, 200, { ok: true, name: 'SchoolHub sync' });
 
-  const m = url.pathname.match(/^\/api\/classes\/([a-z0-9_-]{1,32})\/(cheats|lessons|bells|homework)\/?$/);
+  const m = url.pathname.match(/^\/api\/classes\/([a-z0-9_-]{1,32})\/(cheats|lessons|bells|homework|grades)\/?$/);
   if (!m) return send(res, 404, { error: 'not found' });
   const code = m[1];
   const key = m[2] === 'cheats' ? code : `${code}:${m[2]}`; // шпоры — старый формат ключа

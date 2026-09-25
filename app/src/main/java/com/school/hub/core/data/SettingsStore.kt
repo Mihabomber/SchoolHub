@@ -22,6 +22,9 @@ class SettingsStore(context: Context) {
     val classCode: StateFlow<String> = _classCode.asStateFlow()
     private val _serverUrl = str(KEY_SERVER, "")
     val serverUrl: StateFlow<String> = _serverUrl.asStateFlow()
+    /** Свой MQTT-брокер (пусто = открытые бесплатные по умолчанию). */
+    private val _mqttBroker = str(KEY_MQTT_BROKER, "")
+    val mqttBroker: StateFlow<String> = _mqttBroker.asStateFlow()
 
     /** 0 — как в системе, 1 — светлая, 2 — тёмная */
     private val _themeMode = int("theme_mode", 0)
@@ -52,6 +55,11 @@ class SettingsStore(context: Context) {
         prefs.edit().putString(KEY_SERVER, v.trim()).apply()
         _serverUrl.value = v.trim()
         resetSyncMarks()
+    }
+
+    fun setMqttBroker(v: String) {
+        prefs.edit().putString(KEY_MQTT_BROKER, v.trim()).apply()
+        _mqttBroker.value = v.trim()
     }
 
     fun setThemeMode(v: Int) { prefs.edit().putInt("theme_mode", v).apply(); _themeMode.value = v }
@@ -90,6 +98,7 @@ class SettingsStore(context: Context) {
         private const val KEY_NAME = "user_name"
         private const val KEY_CLASS = "class_code"
         private const val KEY_SERVER = "server_url"
+        private const val KEY_MQTT_BROKER = "mqtt_broker"
         private const val KEY_SEEDED = "seeded_v2"
     }
 }

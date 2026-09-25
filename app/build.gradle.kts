@@ -19,8 +19,8 @@ android {
         // llama.cpp — arm64 с NEON (на практике Android 8+).
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.1.0"
+        versionCode = 5
+        versionName = "1.2.0"
         vectorDrawables { useSupportLibrary = true }
         buildConfigField("boolean", "WITH_LLAMA", withLlama.toString())
         ndk { abiFilters += listOf("arm64-v8a") }
@@ -84,6 +84,9 @@ dependencies {
     // Сеть
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+
+    // Бесплатная синхронизация через MQTT-брокер
+    implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
 
     // P2P без интернета
     implementation("com.google.android.gms:play-services-nearby:19.0.0")

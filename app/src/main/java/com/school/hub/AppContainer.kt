@@ -16,8 +16,10 @@ import com.school.hub.reminders.ReminderScheduler
 import com.school.hub.sync.BellDto
 import com.school.hub.sync.CheatSheetDto
 import com.school.hub.sync.CloudSync
+import com.school.hub.sync.GradeDto
 import com.school.hub.sync.HomeworkDto
 import com.school.hub.sync.LessonDto
+import com.school.hub.sync.MqttSync
 import com.school.hub.sync.NearbySyncManager
 import com.school.hub.sync.SyncCollection
 import com.school.hub.sync.SyncCoordinator
@@ -43,7 +45,7 @@ class AppContainer(context: Context) {
     val cheatSheetRepository by lazy { CheatSheetRepository(database.cheatSheetDao(), imageStorage, settings) }
     val scheduleRepository by lazy { ScheduleRepository(database.scheduleDao()) }
     val homeworkRepository by lazy { HomeworkRepository(database.homeworkDao(), settings) }
-    val gradesRepository by lazy { GradesRepository(database.gradeDao()) }
+    val gradesRepository by lazy { GradesRepository(database.gradeDao(), settings) }
 
     val reminders by lazy { ReminderScheduler(appContext, scheduleRepository, homeworkRepository, settings, appScope) }
     val focusTimer by lazy { FocusTimer(appContext, appScope) }
@@ -58,6 +60,7 @@ class AppContainer(context: Context) {
         val c = cheatSheetRepository
         val s = scheduleRepository
         val h = homeworkRepository
+        val g = gradesRepository
         listOf(
             TypedSyncCollection("cheats", CheatSheetDto::class.java, { c.observeDirtyCount() },
                 { c.exportAll() }, { c.exportDirty() }, { c.markClean(it) }, { l, d -> c.mergeRemote(l, d) }),
@@ -67,11 +70,14 @@ class AppContainer(context: Context) {
                 { s.exportBells(false) }, { s.exportBells(true) }, { s.cleanBells(it) }, { l, d -> s.mergeBells(l, d) }),
             TypedSyncCollection("homework", HomeworkDto::class.java, { h.observeDirtyCount() },
                 { h.export(false) }, { h.export(true) }, { h.markClean(it) }, { l, d -> h.merge(l, d) }),
+            TypedSyncCollection("grades", GradeDto::class.java, { g.observeDirtyCount() },
+                { g.export(false) }, { g.export(true) }, { g.markClean(it) }, { l, d -> g.merge(l, d) }),
         )
     }
 
     val cloudSync by lazy { CloudSync(syncCollections, settings) }
-    val syncCoordinator by lazy { SyncCoordinator(appContext, cloudSync, syncCollections, settings, appScope) }
+    val mqttSync by lazy { MqttSync(syncCollections, settings) }
+    val syncCoordinator by lazy { SyncCoordinator(appContext, mqttSync, cloudSync, syncCollections, settings, appScope) }
     val nearbySync by lazy { NearbySyncManager(appContext, syncCollections, settings, appScope) }
 
     @OptIn(FlowPreview::class)

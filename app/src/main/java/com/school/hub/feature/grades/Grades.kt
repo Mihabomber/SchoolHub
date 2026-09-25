@@ -30,22 +30,30 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Dao
 import androidx.room.Entity
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import com.school.hub.core.data.SettingsStore
 import com.school.hub.core.ui.components.EmptyState
 import com.school.hub.core.ui.theme.AppGradients
 import com.school.hub.feature.cheatsheets.model.Subject
 import com.school.hub.navigation.AppViewModelFactory
+import com.school.hub.sync.GradeDto
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import java.util.UUID
 import kotlin.math.ceil
 
-// ---------------- data (личное, не синхронизируется) ----------------
+// ---------------- data (синхронизируется с классом, как и всё остальное) ----------------
 
 @Entity(tableName = "grades")
 data class GradeEntity(
@@ -54,20 +62,76 @@ data class GradeEntity(
     val value: Int,
     val weight: Int = 1,
     val date: Long,
+    val uuid: String = "",
+    val updatedAt: Long = 0L,
+    val deleted: Boolean = false,
+    val dirty: Boolean = true,
+    val originDevice: String = "",
 )
 
 @Dao
 interface GradeDao {
-    @Query("SELECT * FROM grades ORDER BY date DESC, id DESC") fun observeAll(): Flow<List<GradeEntity>>
-    @Insert suspend fun insert(e: GradeEntity): Long
-    @Query("DELETE FROM grades WHERE id = :id") suspend fun delete(id: Long)
+    @Query("SELECT * FROM grades WHERE deleted = 0 ORDER BY date DESC, id DESC") fun observeAll(): Flow<List<GradeEntity>>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(e: GradeEntity): Long
+    @Query("SELECT * FROM grades WHERE id = :id") suspend fun getById(id: Long): GradeEntity?
+    @Query("SELECT * FROM grades WHERE uuid = :uuid") suspend fun getByUuid(uuid: String): GradeEntity?
+    @Query("SELECT * FROM grades") suspend fun getAllRaw(): List<GradeEntity>
+    @Query("SELECT * FROM grades WHERE dirty = 1") suspend fun getDirty(): List<GradeEntity>
+    @Query("SELECT COUNT(*) FROM grades WHERE dirty = 1") fun observeDirtyCount(): Flow<Int>
+    @Query("UPDATE grades SET dirty = 0 WHERE uuid = :uuid AND updatedAt = :updatedAt") suspend fun markClean(uuid: String, updatedAt: Long)
 }
 
-class GradesRepository(private val dao: GradeDao) {
+class GradesRepository(private val dao: GradeDao, private val settings: SettingsStore) {
+    private val lock = Mutex()
+
     fun observe(): Flow<List<GradeEntity>> = dao.observeAll()
-    suspend fun add(subject: Subject, value: Int, weight: Int) =
-        dao.insert(GradeEntity(subject = subject.name, value = value, weight = weight, date = LocalDate.now().toEpochDay()))
-    suspend fun delete(id: Long) = dao.delete(id)
+    suspend fun add(subject: Subject, value: Int, weight: Int) = lock.withLock {
+        val now = System.currentTimeMillis()
+        dao.upsert(
+            GradeEntity(
+                subject = subject.name, value = value, weight = weight,
+                date = LocalDate.now().toEpochDay(), uuid = UUID.randomUUID().toString(),
+                updatedAt = now, dirty = true, originDevice = settings.deviceId,
+            )
+        )
+    }
+
+    /** Мягкое удаление: помечает удалённой и рассылает «флаг удаления» всем устройствам класса. */
+    suspend fun delete(id: Long) = lock.withLock {
+        val e = dao.getById(id) ?: return@withLock
+        dao.upsert(e.copy(deleted = true, dirty = true, updatedAt = System.currentTimeMillis()))
+    }
+
+    // ---------- синхронизация ----------
+
+    fun observeDirtyCount(): Flow<Int> = dao.observeDirtyCount()
+
+    suspend fun export(dirtyOnly: Boolean): List<GradeDto> = withContext(Dispatchers.IO) {
+        (if (dirtyOnly) dao.getDirty() else dao.getAllRaw()).map {
+            GradeDto(it.uuid, it.subject, it.value, it.weight, it.date, it.updatedAt, it.deleted, it.originDevice)
+        }
+    }
+
+    suspend fun markClean(items: List<GradeDto>) = items.forEach { dao.markClean(it.uuid, it.updatedAt) }
+
+    suspend fun merge(items: List<GradeDto>, markDirty: Boolean): Int = lock.withLock {
+        var n = 0
+        for (d in items) runCatching {
+            if (d.uuid.isBlank()) return@runCatching
+            val local = dao.getByUuid(d.uuid)
+            if (local == null || d.updatedAt > local.updatedAt) {
+                dao.upsert(
+                    GradeEntity(
+                        id = local?.id ?: 0, uuid = d.uuid, subject = d.subject, value = d.value,
+                        weight = d.weight, date = d.date, updatedAt = d.updatedAt,
+                        deleted = d.deleted, dirty = markDirty, originDevice = d.originDevice ?: "",
+                    )
+                )
+                n++
+            }
+        }
+        n
+    }
 }
 
 // ---------------- logic ----------------
@@ -153,7 +217,7 @@ fun GradesScreen(onBack: () -> Unit, vm: GradesViewModel = viewModel(factory = A
                             color = Color.White, style = MaterialTheme.typography.headlineLarge,
                         )
                         Text(
-                            "${s.count} оценок · ${s.subjects.size} предметов · видишь только ты",
+                            "${s.count} оценок · ${s.subjects.size} предметов · синхронизируются с классом",
                             color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall,
                         )
                     }
