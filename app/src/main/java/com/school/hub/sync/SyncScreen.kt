@@ -1,6 +1,13 @@
 package com.school.hub.sync
 
+import android.app.Activity
+import android.bluetooth.BluetoothAdapter
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.RepeatMode
@@ -34,12 +41,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.school.hub.core.ui.components.GradientIcon
 import com.school.hub.core.ui.theme.AppGradients
 import com.school.hub.navigation.AppViewModelFactory
+
+private fun Context.findActivity(): Activity? {
+    var c: Context? = this
+    while (c is ContextWrapper) {
+        if (c is Activity) return c
+        c = c.baseContext
+    }
+    return null
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,17 +69,67 @@ fun SyncScreen(
     val online by vm.online.collectAsStateWithLifecycle()
     val cloud by vm.cloudStatus.collectAsStateWithLifecycle()
     var permissionDenied by remember { mutableStateOf(false) }
+    var permanentlyDenied by remember { mutableStateOf(false) }
+    var hint by remember { mutableStateOf<String?>(null) }
+    var showLocationButton by remember { mutableStateOf(false) }
 
     // Открыли экран — сразу синхронизируемся (пока приложение открыто).
     LaunchedEffect(Unit) { vm.syncCloud() }
 
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
-        if (res.values.all { it }) { permissionDenied = false; vm.startNearby() } else permissionDenied = true
+    val launchNearby: () -> Unit = {
+        val bt = NearbySyncManager.isBluetoothOn(context)
+        val locOff = NearbySyncManager.needsLocation() && !NearbySyncManager.isLocationOn(context)
+        showLocationButton = locOff
+        hint = when {
+            bt == false && locOff -> "Bluetooth и геолокация выключены — без них телефоны могут не найти друг друга."
+            bt == false -> "Bluetooth выключен — ищу только по Wi‑Fi. Включи Bluetooth для надёжного обмена."
+            locOff -> "На этой версии Android для поиска нужна включённая геолокация."
+            else -> null
+        }
+        vm.startNearby()
     }
-    val startNearby = {
-        val perms = NearbySyncManager.requiredPermissions()
+
+    val btLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { launchNearby() }
+
+    val startWithBluetooth: () -> Unit = {
+        if (NearbySyncManager.isBluetoothOn(context) == false) {
+            val ok = runCatching { btLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)) }.isSuccess
+            if (!ok) launchNearby()
+        } else launchNearby()
+    }
+
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
+        val required = NearbySyncManager.requiredPermissions()
+        val granted = required.all { p ->
+            res[p] == true || ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
+        }
+        if (granted) {
+            permissionDenied = false; permanentlyDenied = false
+            startWithBluetooth()
+        } else {
+            permissionDenied = true
+            val activity = context.findActivity()
+            permanentlyDenied = activity != null && required.any { p ->
+                ContextCompat.checkSelfPermission(context, p) != PackageManager.PERMISSION_GRANTED &&
+                    !ActivityCompat.shouldShowRequestPermissionRationale(activity, p)
+            }
+        }
+    }
+    val startNearby: () -> Unit = {
+        val perms = NearbySyncManager.requiredPermissions() + NearbySyncManager.optionalPermissions()
         val missing = perms.filter { ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED }
-        if (missing.isEmpty()) vm.startNearby() else permLauncher.launch(missing.toTypedArray())
+        if (missing.isEmpty()) startWithBluetooth() else permLauncher.launch(missing.toTypedArray())
+    }
+    val openAppSettings: () -> Unit = {
+        runCatching {
+            context.startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + context.packageName))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
+    val openLocationSettings: () -> Unit = {
+        runCatching { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
 
     Scaffold(
@@ -116,7 +183,17 @@ fun SyncScreen(
             }
 
             // ---------- Рядом: Bluetooth / Wi-Fi Direct ----------
-            NearbyCard(nearby, permissionDenied, onStart = startNearby, onStop = vm::stopNearby)
+            NearbyCard(
+                state = nearby,
+                permissionDenied = permissionDenied,
+                permanentlyDenied = permanentlyDenied,
+                hint = hint,
+                showLocationButton = showLocationButton,
+                onStart = startNearby,
+                onStop = vm::stopNearby,
+                onOpenSettings = openAppSettings,
+                onOpenLocation = openLocationSettings,
+            )
 
             // ---------- Интернет: бесплатный MQTT-брокер ----------
             SectionCard {
@@ -191,8 +268,19 @@ private fun SectionCard(content: @Composable ColumnScope.() -> Unit) {
     }
 }
 
+
 @Composable
-private fun NearbyCard(state: NearbyState, permissionDenied: Boolean, onStart: () -> Unit, onStop: () -> Unit) {
+private fun NearbyCard(
+    state: NearbyState,
+    permissionDenied: Boolean,
+    permanentlyDenied: Boolean,
+    hint: String?,
+    showLocationButton: Boolean,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenLocation: () -> Unit,
+) {
     val pulse = rememberInfiniteTransition(label = "pulse")
     val scale by pulse.animateFloat(
         initialValue = 1f, targetValue = 1.25f,
@@ -241,11 +329,27 @@ private fun NearbyCard(state: NearbyState, permissionDenied: Boolean, onStart: (
                     }
                 }
             }
+            if (hint != null) {
+                Surface(shape = RoundedCornerShape(16.dp), color = Color.Black.copy(alpha = 0.18f)) {
+                    Text(hint, color = Color.White, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
+                }
+            }
+            if (showLocationButton) {
+                OutlinedButton(onClick = onOpenLocation, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                    Text("Включить геолокацию", color = Color.White)
+                }
+            }
             if (permissionDenied) {
                 Text(
-                    "Нужны разрешения на Bluetooth и устройства поблизости — без них обмен не работает.",
+                    if (permanentlyDenied) "Разрешения на Bluetooth и «устройства поблизости» запрещены. Открой настройки и разреши их вручную."
+                    else "Нужны разрешения на Bluetooth и устройства поблизости — без них обмен не работает.",
                     color = Color.White, style = MaterialTheme.typography.bodySmall,
                 )
+                if (permanentlyDenied) {
+                    OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                        Text("Открыть настройки", color = Color.White)
+                    }
+                }
             }
             Button(
                 onClick = if (state.running) onStop else onStart,
@@ -270,7 +374,8 @@ private fun NearbyCard(state: NearbyState, permissionDenied: Boolean, onStart: (
                 }
             }
             Text(
-                "Включи Bluetooth и Wi-Fi (интернет не нужен), а на Android 8–11 ещё и геолокацию.",
+                "Включи Bluetooth и Wi-Fi (интернет не нужен), а на Android 8–12 ещё и геолокацию. " +
+                    "Оба телефона должны нажать «Начать обмен» с одинаковым кодом класса.",
                 color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelSmall,
             )
         }
