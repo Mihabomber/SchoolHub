@@ -3,7 +3,7 @@ project(schoolhub_llama C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-# ggml в Debug работает в десятки раз медленнее — всегда собираем Release
+# ggml в Debug работает в десятки раз медленнее, поэтому всегда собираем Release
 set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 add_compile_options(-O3 -DNDEBUG)
 
@@ -35,10 +35,12 @@ add_library(schoolhub_llama SHARED llama_jni.cpp)
 target_link_libraries(schoolhub_llama PRIVATE llama log android)
 
 # Зрение: собираем libmtmd прямо из исходников llama.cpp/tools/mtmd (без CLI и common).
+# Важно: clip.cpp нужен (там clip_init, g_logger_state). Исключаем только CLI, предупреждения и тесты по имени файла.
 set(MTMD_DIR ${llama_SOURCE_DIR}/tools/mtmd)
 if(SCHOOLHUB_VISION AND EXISTS ${MTMD_DIR}/mtmd.cpp)
     file(GLOB MTMD_SRC ${MTMD_DIR}/*.cpp ${MTMD_DIR}/models/*.cpp)
-    list(FILTER MTMD_SRC EXCLUDE REGEX ".*(cli|deprecation|test).*\\.cpp$")
+    list(FILTER MTMD_SRC EXCLUDE REGEX "/(mtmd-cli|llava-cli|minicpmv-cli|qwen2vl-cli|gemma3-cli|deprecation-warning|[^/]*test[^/]*)\\.cpp$")
+    message(STATUS "SchoolHub: mtmd sources: ${MTMD_SRC}")
     add_library(schoolhub_mtmd STATIC ${MTMD_SRC})
     target_include_directories(schoolhub_mtmd PUBLIC ${MTMD_DIR} ${llama_SOURCE_DIR}/vendor ${llama_SOURCE_DIR}/include)
     target_link_libraries(schoolhub_mtmd PUBLIC llama ggml)
