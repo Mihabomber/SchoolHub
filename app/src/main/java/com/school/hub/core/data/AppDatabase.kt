@@ -28,7 +28,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun gradeDao(): GradeDao
 
     companion object {
-        /** 2 → 3: оценки получают uuid/updatedAt/dirty и уходят в общий обмен класса. */
+        /** 2 -> 3: оценки получают uuid/updatedAt/dirty и уходят в общий обмен класса. */
         private val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -47,10 +47,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Данные пользователя не удаляются при обновлении.
+         * Разрушительная миграция разрешена только со старой схемы 1 (для неё нет пути миграции,
+         * так было и раньше). Для всех новых версий схемы нужно добавлять Migration.
+         */
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "schoolhub.db")
                 .addMigrations(MIGRATION_2_3)
-                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigrationFrom(1)
                 .build()
     }
 }

@@ -8,11 +8,20 @@ plugins {
 // Firebase (аккаунты, админка). Без google-services.json приложение соберётся, но вход будет недоступен.
 if (file("google-services.json").exists()) apply(plugin = "com.google.gms.google-services")
 
-// -PwithLlama=false — собрать без нативного движка llama.cpp (быстрее, ИИ-чат будет недоступен)
+// -PwithLlama=false: собрать без нативного движка llama.cpp (быстрее, ИИ-чат будет недоступен)
 val withLlama: Boolean = (project.findProperty("withLlama") as String?)?.toBoolean() ?: true
-// -PwithVision=false — без зрения (mtmd); -PllamaTag=b6550 — другая версия llama.cpp
+// -PwithVision=false: без зрения (mtmd); -PllamaTag=b6550: другая версия llama.cpp
 val withVision: Boolean = (project.findProperty("withVision") as String?)?.toBoolean() ?: true
 val llamaTag: String = (project.findProperty("llamaTag") as String?) ?: "b8720"
+
+// Ключ подписи больше не хранится в репозитории.
+// CI берёт его из GitHub Secrets. Локально: положить schoolhub.jks в app/ и задать переменные окружения.
+val signingStoreFile = file(System.getenv("SIGNING_STORE_FILE") ?: "schoolhub.jks")
+val signingStorePassword: String? = System.getenv("SIGNING_STORE_PASSWORD")
+val signingKeyAlias: String? = System.getenv("SIGNING_KEY_ALIAS")
+val signingKeyPassword: String? = System.getenv("SIGNING_KEY_PASSWORD")
+val hasReleaseKey = signingStoreFile.exists() && !signingStorePassword.isNullOrEmpty() &&
+    !signingKeyAlias.isNullOrEmpty() && !signingKeyPassword.isNullOrEmpty()
 
 android {
     namespace = "com.school.hub"
@@ -21,8 +30,8 @@ android {
 
     defaultConfig {
         applicationId = "com.school.hub"
-        // 26 (Android 8.0): java.time, адаптивные иконки; ML Kit — 21+, Nearby — 16+,
-        // llama.cpp — arm64 с NEON (на практике Android 8+).
+        // 26 (Android 8.0): java.time, адаптивные иконки; ML Kit 21+, Nearby 16+,
+        // llama.cpp: arm64 с NEON (на практике Android 8+).
         minSdk = 26
         targetSdk = 34
         versionCode = 7
@@ -57,20 +66,23 @@ android {
     // Постоянный ключ подписи: SHA-1 не меняется между сборками (нужно для входа через Google
     // и чтобы новые версии ставились поверх старых без потери данных).
     signingConfigs {
-        create("parta") {
-            storeFile = file("schoolhub.jks")
-            storePassword = "schoolhub"
-            keyAlias = "schoolhub"
-            keyPassword = "schoolhub"
+        if (hasReleaseKey) {
+            create("parta") {
+                storeFile = signingStoreFile
+                storePassword = signingStorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+            }
         }
     }
 
     buildTypes {
-        debug { signingConfig = signingConfigs.getByName("parta") }
+        val signing = signingConfigs.findByName("parta") ?: signingConfigs.getByName("debug")
+        debug { signingConfig = signing }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("parta")
+            signingConfig = signing
         }
     }
     compileOptions {
@@ -95,7 +107,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.5")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.5")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.5")
-    // Guava ListenableFuture — нужен CameraX (PreviewView / ProcessCameraProvider)
+    // Guava ListenableFuture: нужен CameraX (PreviewView / ProcessCameraProvider)
     implementation("com.google.guava:guava:32.1.2-android")
     implementation("androidx.navigation:navigation-compose:2.8.0")
 

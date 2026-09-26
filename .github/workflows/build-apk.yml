@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, v2.1-dev ]
   workflow_dispatch:
 
 permissions:
@@ -12,6 +12,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+      SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,16 +45,27 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      # Ключ подписи из секретов. Без него APK не встанет поверх старой версии, поэтому сборка останавливается.
+      - name: Signing key
+        env:
+          KS_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KS_B64" ] || [ -z "$SIGNING_STORE_PASSWORD" ] || [ -z "$SIGNING_KEY_ALIAS" ] || [ -z "$SIGNING_KEY_PASSWORD" ]; then
+            echo "::error::Нет секретов подписи: SIGNING_KEYSTORE_B64, SIGNING_STORE_PASSWORD, SIGNING_KEY_ALIAS, SIGNING_KEY_PASSWORD"
+            exit 1
+          fi
+          echo "$KS_B64" | base64 -d > app/schoolhub.jks
+          echo "SHA-1 ключа подписи (добавь в Firebase, Настройки проекта, Android-приложение):"
+          keytool -list -v -keystore app/schoolhub.jks -storepass "$SIGNING_STORE_PASSWORD" | grep -E "SHA1|SHA256" || true
+
       - name: Firebase config
         env:
           GS_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           if [ -n "$GS_JSON" ]; then echo "$GS_JSON" > app/google-services.json; echo "google-services.json из секрета"; fi
-          [ -f app/google-services.json ] && echo "✅ Firebase подключён" || echo "⚠️ Нет app/google-services.json — вход работать не будет"
-          echo "SHA-1 ключа подписи (добавь в Firebase → Настройки проекта → Android-приложение):"
-          keytool -list -v -keystore app/schoolhub.jks -storepass schoolhub | grep -E "SHA1|SHA256"
+          [ -f app/google-services.json ] && echo "Firebase подключён" || echo "Нет app/google-services.json, вход работать не будет"
 
-      # Лестница сборок: от самой полной к самой простой. Первая успешная — идёт в релиз.
+      # Лестница сборок: от самой полной к самой простой. Первая успешная идёт в релиз.
       - name: "1) Full: llama.cpp b8720 + vision (Gemma 4)"
         id: s1
         continue-on-error: true
@@ -76,10 +91,10 @@ jobs:
       - name: Prepare APK
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk SchoolHub.apk
-          if [ "${{ steps.s1.outcome }}" = "success" ]; then N="✅ Полная сборка: ИИ + зрение (llama.cpp b8720)";
-          elif [ "${{ steps.s2.outcome }}" = "success" ]; then N="🟡 ИИ без зрения (b8720). Смотри лог шага 1";
-          elif [ "${{ steps.s3.outcome }}" = "success" ]; then N="🟡 ИИ на старом llama.cpp b6550 (без Gemma 4). Смотри лог шагов 1-2";
-          else N="⚠️ Без ИИ-движка. Смотри логи шагов 1-3"; fi
+          if [ "${{ steps.s1.outcome }}" = "success" ]; then N="Полная сборка: ИИ + зрение (llama.cpp b8720)";
+          elif [ "${{ steps.s2.outcome }}" = "success" ]; then N="ИИ без зрения (b8720). Смотри лог шага 1";
+          elif [ "${{ steps.s3.outcome }}" = "success" ]; then N="ИИ на старом llama.cpp b6550 (без Gemma 4). Смотри логи шагов 1-2";
+          else N="Без ИИ-движка. Смотри логи шагов 1-3"; fi
           echo "NOTE=$N" >> $GITHUB_ENV
 
       - uses: actions/upload-artifact@v4
@@ -87,11 +102,13 @@ jobs:
           name: SchoolHub-apk
           path: SchoolHub.apk
 
+      # Релиз публикуется только из main. Сборки ветки v2.1-dev доступны как artifact.
       - name: Publish release
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: SchoolHub • сборка ${{ github.run_number }}
+          name: SchoolHub, сборка ${{ github.run_number }}
           body: |
             ${{ env.NOTE }}
             Скачай SchoolHub.apk ниже и установи на Android 8.0+ (arm64).
