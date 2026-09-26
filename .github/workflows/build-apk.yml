@@ -74,7 +74,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          gradle assembleDebug -PwithLlama=true -PwithVision=true -PllamaTag=b8720 --no-daemon --stacktrace 2>&1 | tee s1.log
+          gradle assembleRelease -PwithLlama=true -PwithVision=true -PllamaTag=b8720 --no-daemon --stacktrace 2>&1 | tee s1.log
 
       - name: "2) llama.cpp b8720 without vision"
         id: s2
@@ -82,7 +82,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          gradle clean assembleDebug -PwithLlama=true -PwithVision=false -PllamaTag=b8720 --no-daemon --stacktrace 2>&1 | tee s2.log
+          gradle clean assembleRelease -PwithLlama=true -PwithVision=false -PllamaTag=b8720 --no-daemon --stacktrace 2>&1 | tee s2.log
 
       - name: "3) llama.cpp b6550 (older, stable) + vision"
         id: s3
@@ -90,7 +90,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          gradle clean assembleDebug -PwithLlama=true -PwithVision=true -PllamaTag=b6550 --no-daemon --stacktrace 2>&1 | tee s3.log
+          gradle clean assembleRelease -PwithLlama=true -PwithVision=true -PllamaTag=b6550 --no-daemon --stacktrace 2>&1 | tee s3.log
 
       - name: "4) Fallback without AI engine"
         id: s4
@@ -98,7 +98,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          gradle clean assembleDebug -PwithLlama=false --no-daemon --stacktrace 2>&1 | tee s4.log
+          gradle clean assembleRelease -PwithLlama=false --no-daemon --stacktrace 2>&1 | tee s4.log
 
       # Ошибки компиляции видны в аннотациях запуска, без скачивания полного лога.
       - name: Report errors
@@ -124,26 +124,32 @@ jobs:
 
       - name: Prepare APK
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk SchoolHub.apk
+          cp app/build/outputs/apk/release/app-release.apk SchoolHub.apk
           if [ "${{ steps.s1.outcome }}" = "success" ]; then N="Полная сборка: ИИ + зрение (llama.cpp b8720)";
           elif [ "${{ steps.s2.outcome }}" = "success" ]; then N="ИИ без зрения (b8720). Смотри лог шага 1";
           elif [ "${{ steps.s3.outcome }}" = "success" ]; then N="ИИ на старом llama.cpp b6550 (без Gemma 4). Смотри логи шагов 1-2";
           else N="Без ИИ-движка. Смотри логи шагов 1-3"; fi
           echo "NOTE=$N" >> $GITHUB_ENV
+          VC=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' app/build.gradle.kts | head -1)
+          VN=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
+          echo "VC=$VC" >> $GITHUB_ENV
+          echo "VN=$VN" >> $GITHUB_ENV
 
       - uses: actions/upload-artifact@v4
         with:
           name: SchoolHub-apk
           path: SchoolHub.apk
 
+      # Релиз по versionCode: release-8, release-9 и т.д. Повторный push с тем же versionCode обновляет APK в том же релизе.
       - name: Publish release
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/v2.1-dev'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ github.run_number }}
-          name: SchoolHub, сборка ${{ github.run_number }}
+          tag_name: release-${{ env.VC }}
+          target_commitish: ${{ github.sha }}
+          name: SchoolHub ${{ env.VN }} • релиз ${{ env.VC }}
           body: |
             ${{ env.NOTE }}
-            Скачай SchoolHub.apk ниже и установи на Android 8.0+ (arm64).
+            Скачай SchoolHub.apk ниже и установи на Android 8.0+ (arm64). Ставится поверх старой версии, данные сохраняются.
           files: SchoolHub.apk
           make_latest: true

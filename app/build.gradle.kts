@@ -34,7 +34,7 @@ android {
         // llama.cpp: arm64 с NEON (на практике Android 8+).
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
+        versionCode = 8
         versionName = "2.1.0"
         vectorDrawables { useSupportLibrary = true }
         buildConfigField("boolean", "WITH_LLAMA", withLlama.toString())
@@ -84,6 +84,11 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signing
         }
+    }
+    // Release-сборка не должна падать из-за предупреждений lint.
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
