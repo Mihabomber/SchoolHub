@@ -1,17 +1,22 @@
 package com.school.hub.feature.games
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,9 +29,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.school.hub.SchoolApp
-import kotlinx.coroutines.delay
 import kotlin.math.abs
+
+// delay() в этом пакете — игровой (GameSupport.kt), он учитывает паузу.
 
 private enum class Game(val title: String, val emoji: String, val desc: String) {
     SNAKE("Змейка", "🐍", "Классика: собирай яблоки, не врезайся"),
@@ -68,63 +77,134 @@ private enum class Game(val title: String, val emoji: String, val desc: String) 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GamesScreen(onBack: () -> Unit) {
-    var game by remember { mutableStateOf<Game?>(null) }
+    var game by rememberSaveable { mutableStateOf<Game?>(null) }
     val stats = (LocalContext.current.applicationContext as SchoolApp).container.stats
+    val currentGame by rememberUpdatedState(game)
+
+    // Пауза, когда приложение уходит в фон
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE && currentGame != null) GamePause.paused = true
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            GamePause.paused = false
+        }
+    }
+
+    fun closeGame() {
+        GamePause.paused = false
+        game = null
+    }
+
+    BackHandler(enabled = game != null) { closeGame() }
+
     Scaffold(topBar = {
         TopAppBar(
             title = { Text(game?.let { "${it.emoji} ${it.title}" } ?: "Мини-игры") },
-            navigationIcon = { IconButton(onClick = { if (game != null) game = null else onBack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") } },
+            navigationIcon = {
+                IconButton(onClick = { if (game != null) closeGame() else onBack() }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад")
+                }
+            },
+            actions = {
+                if (game != null) {
+                    IconButton(onClick = { GamePause.paused = !GamePause.paused }) {
+                        if (GamePause.paused) Icon(Icons.Filled.PlayArrow, "Продолжить")
+                        else Icon(Icons.Filled.Pause, "Пауза")
+                    }
+                }
+            },
         )
     }) { inner ->
         Box(Modifier.fillMaxSize().padding(inner).padding(16.dp)) {
-            when (game) {
-                null -> LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            val g0 = game
+            if (g0 == null) {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(Game.entries) { g ->
-                        Card(onClick = { game = g; stats.inc("games") }, shape = RoundedCornerShape(22.dp)) {
+                        Card(onClick = { GamePause.paused = false; game = g; stats.inc("games") }, shape = RoundedCornerShape(22.dp)) {
                             Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(g.emoji, fontSize = 36.sp)
                                 Spacer(Modifier.width(14.dp))
-                                Column { Text(g.title, style = MaterialTheme.typography.titleMedium); Text(g.desc, style = MaterialTheme.typography.bodySmall) }
+                                Column {
+                                    Text(g.title, style = MaterialTheme.typography.titleMedium)
+                                    Text(g.desc, style = MaterialTheme.typography.bodySmall)
+                                }
                             }
                         }
                     }
                 }
-                Game.SNAKE -> Snake()
-                Game.TTT_BOT -> TicTacToe(bot = true)
-                Game.TTT_DUO -> TicTacToe(bot = false)
-                Game.G2048 -> Game2048()
-                Game.DICE -> DiceGame()
-                Game.COIN -> CoinGame()
-                Game.RPS -> RpsGame()
-                Game.GUESS -> GuessGame()
-                Game.REACTION -> ReactionGame()
-                Game.PAIRS -> PairsGame()
-                Game.MINES -> MinesGame()
-                Game.BREAKOUT -> BreakoutGame()
-                Game.PONG -> PongGame()
-                Game.FLAPPY -> FlappyGame()
-                Game.CATCH -> CatchGame()
-                Game.SIMON -> SimonGame()
-                Game.SLIDE -> SlideGame()
-                Game.LIGHTS -> LightsGame()
-                Game.BULLS -> BullsGame()
-                Game.HANGMAN -> HangmanGame()
-                Game.MATH -> MathGame()
-                Game.MAZE -> MazeGame()
-                Game.MOLE -> MoleGame()
-                Game.STROOP -> StroopGame()
-                Game.HILO -> HiloGame()
-                Game.BJ -> BjGame()
-                Game.SLOTS -> SlotsGame()
-                Game.BATTLE -> BattleGame()
-                Game.TAPRACE -> TapRaceGame()
-                Game.DIGITS -> DigitsGame()
-                Game.HOOPS -> HoopsGame()
-                Game.FOOTBALL3D -> Football3DGame()
-                Game.CUBE3D -> Cube3DGame()
-                Game.ANAGRAM -> AnagramGame()
+            } else {
+                key(g0) { GameContent(g0) }
+                if (GamePause.paused) PauseOverlay(onResume = { GamePause.paused = false }, onExit = { closeGame() })
             }
         }
+    }
+}
+
+@Composable
+private fun PauseOverlay(onResume: () -> Unit, onExit: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { },
+        contentAlignment = Alignment.Center,
+    ) {
+        Card(shape = RoundedCornerShape(24.dp)) {
+            Column(
+                Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("Пауза", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Button(onClick = onResume) { Text("Продолжить") }
+                OutlinedButton(onClick = onExit) { Text("К списку игр") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GameContent(game: Game) {
+    when (game) {
+        Game.SNAKE -> Snake()
+        Game.TTT_BOT -> TicTacToe(bot = true)
+        Game.TTT_DUO -> TicTacToe(bot = false)
+        Game.G2048 -> Game2048()
+        Game.DICE -> DiceGame()
+        Game.COIN -> CoinGame()
+        Game.RPS -> RpsGame()
+        Game.GUESS -> GuessGame()
+        Game.REACTION -> ReactionGame()
+        Game.PAIRS -> PairsGame()
+        Game.MINES -> MinesGame()
+        Game.BREAKOUT -> BreakoutGame()
+        Game.PONG -> PongGame()
+        Game.FLAPPY -> FlappyGame()
+        Game.CATCH -> CatchGame()
+        Game.SIMON -> SimonGame()
+        Game.SLIDE -> SlideGame()
+        Game.LIGHTS -> LightsGame()
+        Game.BULLS -> BullsGame()
+        Game.HANGMAN -> HangmanGame()
+        Game.MATH -> MathGame()
+        Game.MAZE -> MazeGame()
+        Game.MOLE -> MoleGame()
+        Game.STROOP -> StroopGame()
+        Game.HILO -> HiloGame()
+        Game.BJ -> BjGame()
+        Game.SLOTS -> SlotsGame()
+        Game.BATTLE -> BattleGame()
+        Game.TAPRACE -> TapRaceGame()
+        Game.DIGITS -> DigitsGame()
+        Game.HOOPS -> HoopsGame()
+        Game.FOOTBALL3D -> Football3DGame()
+        Game.CUBE3D -> Cube3DGame()
+        Game.ANAGRAM -> AnagramGame()
     }
 }
 
@@ -139,7 +219,7 @@ private fun Snake() {
     var food by remember { mutableStateOf(4 to 4) }
     var alive by remember { mutableStateOf(true) }
     var score by remember { mutableIntStateOf(0) }
-    var best by remember { mutableIntStateOf(0) }
+    var best by rememberBest("snake")
     val head = MaterialTheme.colorScheme.primary
     val body = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
     val bg = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -153,6 +233,7 @@ private fun Snake() {
             if (nh in snake.dropLast(1)) { alive = false; best = maxOf(best, score); break }
             snake = if (nh == food) {
                 score++
+                if (score > best) best = score
                 var f: Pair<Int, Int>
                 do { f = (0 until N).random() to (0 until N).random() } while (f in snake || f == nh)
                 food = f
@@ -277,9 +358,10 @@ private fun spawn(b: List<Int>): List<Int> {
 private fun Game2048() {
     var board by remember { mutableStateOf(spawn(spawn(List(16) { 0 }))) }
     var score by remember { mutableIntStateOf(0) }
+    var best by rememberBest("g2048")
     val over = (0..3).all { move(board, it).first == board }
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Счёт: $score" + if (over) " · Игра окончена" else "", style = MaterialTheme.typography.titleMedium)
+        Text("Счёт: $score · Рекорд: $best" + if (over) " · Игра окончена" else "", style = MaterialTheme.typography.titleMedium)
         Column(
             Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(20.dp)).background(Color(0xFFBBADA0)).padding(8.dp)
                 .pointerInput(board) {
@@ -288,7 +370,11 @@ private fun Game2048() {
                         val d = if (abs(acc.x) > abs(acc.y)) (if (acc.x < 0) 0 else 1) else (if (acc.y < 0) 2 else 3)
                         if (acc.getDistance() > 24) {
                             val (nb, g) = move(board, d)
-                            if (nb != board) { board = spawn(nb); score += g }
+                            if (nb != board) {
+                                board = spawn(nb)
+                                score += g
+                                if (score > best) best = score
+                            }
                         }
                     }) { _, delta -> acc += delta }
                 },
