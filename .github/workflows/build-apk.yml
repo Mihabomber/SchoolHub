@@ -12,12 +12,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    env:
-      SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
-      SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
-      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-java@v4
         with:
@@ -45,18 +43,24 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      # Ключ подписи из секретов. Без него APK не встанет поверх старой версии, поэтому сборка останавливается.
+      # Ключ подписи: сначала из секретов, иначе из истории main (тот же ключ, APK встанет поверх старой версии).
       - name: Signing key
         env:
           KS_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+          S_STORE: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          S_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          S_KEY: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
-          if [ -z "$KS_B64" ] || [ -z "$SIGNING_STORE_PASSWORD" ] || [ -z "$SIGNING_KEY_ALIAS" ] || [ -z "$SIGNING_KEY_PASSWORD" ]; then
-            echo "::error::Нет секретов подписи: SIGNING_KEYSTORE_B64, SIGNING_STORE_PASSWORD, SIGNING_KEY_ALIAS, SIGNING_KEY_PASSWORD"
-            exit 1
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > app/schoolhub.jks
+          else
+            echo "::warning::Нет секрета SIGNING_KEYSTORE_B64, беру ключ из main"
+            git show origin/main:app/schoolhub.jks > app/schoolhub.jks
           fi
-          echo "$KS_B64" | base64 -d > app/schoolhub.jks
-          echo "SHA-1 ключа подписи (добавь в Firebase, Настройки проекта, Android-приложение):"
-          keytool -list -v -keystore app/schoolhub.jks -storepass "$SIGNING_STORE_PASSWORD" | grep -E "SHA1|SHA256" || true
+          echo "SIGNING_STORE_PASSWORD=${S_STORE:-schoolhub}" >> $GITHUB_ENV
+          echo "SIGNING_KEY_ALIAS=${S_ALIAS:-schoolhub}" >> $GITHUB_ENV
+          echo "SIGNING_KEY_PASSWORD=${S_KEY:-schoolhub}" >> $GITHUB_ENV
+          keytool -list -v -keystore app/schoolhub.jks -storepass "${S_STORE:-schoolhub}" | grep -E "SHA1|SHA256" || true
 
       - name: Firebase config
         env:
@@ -65,7 +69,6 @@ jobs:
           if [ -n "$GS_JSON" ]; then echo "$GS_JSON" > app/google-services.json; echo "google-services.json из секрета"; fi
           [ -f app/google-services.json ] && echo "Firebase подключён" || echo "Нет app/google-services.json, вход работать не будет"
 
-      # Лестница сборок: от самой полной к самой простой. Первая успешная идёт в релиз.
       - name: "1) Full: llama.cpp b8720 + vision (Gemma 4)"
         id: s1
         continue-on-error: true
@@ -102,7 +105,6 @@ jobs:
           name: SchoolHub-apk
           path: SchoolHub.apk
 
-      # Релиз публикуется только из main. Сборки ветки v2.1-dev доступны как artifact.
       - name: Publish release
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
