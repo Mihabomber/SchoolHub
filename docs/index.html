@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Парта — школьное приложение для Android</title>
+<meta name="description" content="Парта (SchoolHub): шпаргалки, расписание, домашка, ИИ без интернета, переводчик с камерой и обмен с классом по Bluetooth.">
+<meta name="theme-color" content="#0b0a14">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0b0a14;--card:rgba(255,255,255,.06);--line:rgba(255,255,255,.12);--text:#f1efff;--muted:#a9a6c2;--violet:#5b4cf0;--purple:#a855f7;--pink:#ff3d77;--teal:#00bfa6;--gold:#ffb800}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+.blobs{position:fixed;inset:0;z-index:-1;overflow:hidden;filter:blur(80px);opacity:.75}
+.blob{position:absolute;border-radius:50%;width:48vmax;height:48vmax;animation:float 22s ease-in-out infinite alternate}
+.b1{background:radial-gradient(circle,var(--violet),transparent 65%);top:-15vmax;left:-10vmax}
+.b2{background:radial-gradient(circle,var(--pink),transparent 65%);top:20vh;right:-18vmax;animation-duration:27s}
+.b3{background:radial-gradient(circle,var(--teal),transparent 65%);bottom:-20vmax;left:15vw;animation-duration:31s}
+.b4{background:radial-gradient(circle,var(--purple),transparent 65%);top:60vh;left:-20vmax;animation-duration:25s}
+@keyframes float{to{transform:translate(8vmax,6vmax) scale(1.15)}}
+.wrap{max-width:1120px;margin:0 auto;padding:0 22px}
+nav{position:sticky;top:0;z-index:10;backdrop-filter:blur(18px);background:rgba(11,10,20,.55);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+.logo{display:flex;align-items:center;gap:10px;font-family:Unbounded,sans-serif;font-weight:800;font-size:20px}
+.logo i{width:34px;height:34px;border-radius:11px;background:linear-gradient(135deg,var(--violet),var(--purple));display:grid;place-items:center;font-style:normal;font-size:18px;box-shadow:0 6px 24px rgba(91,76,240,.6)}
+nav .links{display:flex;gap:22px;color:var(--muted);font-size:15px}
+nav .links a:hover{color:var(--text)}
+@media(max-width:720px){nav .links{display:none}}
+.hero{padding:90px 0 60px;display:grid;grid-template-columns:1.15fr .85fr;gap:40px;align-items:center}
+@media(max-width:900px){.hero{grid-template-columns:1fr;padding-top:50px}}
+.pill{display:inline-flex;gap:8px;align-items:center;padding:6px 14px;border-radius:99px;background:var(--card);border:1px solid var(--line);font-size:13px;color:var(--muted)}
+.pill b{width:8px;height:8px;border-radius:50%;background:#2ecc71;box-shadow:0 0 12px #2ecc71}
+h1{font-family:Unbounded,sans-serif;font-weight:800;font-size:clamp(38px,6vw,68px);line-height:1.05;margin:20px 0 18px;letter-spacing:-.02em}
+.grad{background:linear-gradient(90deg,#c5bfff,var(--pink),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{font-size:19px;color:var(--muted);max-width:560px}
+.cta{display:flex;flex-wrap:wrap;gap:14px;margin-top:32px}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:16px 26px;border-radius:18px;font-weight:600;font-size:16px;transition:transform .2s,box-shadow .2s}
+.btn:hover{transform:translateY(-2px)}
+.primary{background:linear-gradient(135deg,var(--violet),var(--purple));box-shadow:0 12px 40px rgba(91,76,240,.55)}
+.primary:hover{box-shadow:0 16px 50px rgba(168,85,247,.7)}
+.ghost{background:var(--card);border:1px solid var(--line)}
+.meta{margin-top:14px;font-size:13px;color:var(--muted)}
+.phone{justify-self:center;width:290px;height:590px;border-radius:44px;padding:12px;background:linear-gradient(160deg,#2a2940,#101018);border:1px solid var(--line);box-shadow:0 40px 100px rgba(0,0,0,.6),inset 0 0 0 2px rgba(255,255,255,.04);transform:rotate(-4deg);animation:bob 6s ease-in-out infinite}
+@keyframes bob{50%{transform:rotate(-4deg) translateY(-14px)}}
+.screen{height:100%;border-radius:34px;overflow:hidden;background:linear-gradient(180deg,#171428,#0e0d18);padding:22px 16px;display:flex;flex-direction:column;gap:12px}
+.scard{border-radius:20px;padding:14px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08);font-size:13px}
+.scard h4{font-size:14px;margin-bottom:6px}
+.bar{height:7px;border-radius:9px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:8px}
+.bar span{display:block;height:100%;border-radius:9px}
+.gcard{background:linear-gradient(135deg,#f953c6,#b91d73);border:none}
+.chat{align-self:flex-end;background:var(--violet);padding:9px 13px;border-radius:16px 16px 5px 16px;font-size:12.5px;max-width:85%}
+.ans{background:rgba(255,255,255,.09);padding:9px 13px;border-radius:16px 16px 16px 5px;font-size:12.5px;max-width:90%}
+section{padding:70px 0}
+h2{font-family:Unbounded,sans-serif;font-size:clamp(28px,4vw,42px);margin-bottom:12px;letter-spacing:-.01em}
+.sub{color:var(--muted);max-width:620px;margin-bottom:36px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:18px}
+.f{padding:24px;border-radius:26px;background:var(--card);border:1px solid var(--line);backdrop-filter:blur(12px);transition:transform .25s,border-color .25s}
+.f:hover{transform:translateY(-4px);border-color:rgba(197,191,255,.45)}
+.ic{width:50px;height:50px;border-radius:16px;display:grid;place-items:center;font-size:24px;margin-bottom:16px}
+.f h3{font-size:18px;margin-bottom:6px}
+.f p{color:var(--muted);font-size:15px}
+.v{background:linear-gradient(135deg,#5b4cf0,#a855f7)}.s{background:linear-gradient(135deg,#ff7a59,#ff3d77)}.o{background:linear-gradient(135deg,#00b4db,#0072ff)}.m{background:linear-gradient(135deg,#11998e,#38ef7d)}.c{background:linear-gradient(135deg,#f953c6,#b91d73)}.n{background:linear-gradient(135deg,#232526,#5b4cf0)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+@media(max-width:720px){.stats{grid-template-columns:repeat(2,1fr)}}
+.st{padding:22px;border-radius:24px;background:var(--card);border:1px solid var(--line);text-align:center}
+.st b{display:block;font-family:Unbounded,sans-serif;font-size:30px}
+.st span{color:var(--muted);font-size:14px}
+.steps{counter-reset:s;display:grid;gap:14px}
+.step{display:flex;gap:16px;align-items:flex-start;padding:18px 20px;border-radius:22px;background:var(--card);border:1px solid var(--line)}
+.step:before{counter-increment:s;content:counter(s);flex:none;width:36px;height:36px;border-radius:12px;display:grid;place-items:center;font-weight:700;background:linear-gradient(135deg,var(--violet),var(--purple))}
+.dl{padding:46px;border-radius:36px;background:linear-gradient(135deg,rgba(91,76,240,.35),rgba(255,61,119,.25));border:1px solid var(--line);text-align:center}
+.dl .btn{margin-top:24px}
+footer{padding:40px 0 60px;color:var(--muted);font-size:14px;text-align:center}
+footer a{text-decoration:underline}
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .7s,transform .7s}
+.reveal.on{opacity:1;transform:none}
+</style>
+</head>
+<body>
+<div class="blobs"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="blob b4"></div></div>
+
+<nav><div class="wrap">
+  <a class="logo" href="#"><i>📚</i>Парта</a>
+  <div class="links"><a href="#features">Возможности</a><a href="#ai">ИИ офлайн</a><a href="#sync">Обмен с классом</a><a href="#download">Скачать</a></div>
+</div></nav>
+
+<header class="wrap hero">
+  <div>
+    <span class="pill"><b></b><span id="ver">Android 8.0 и новее</span></span>
+    <h1>Вся школа —<br><span class="grad">в одном телефоне</span></h1>
+    <p class="lead">Шпаргалки, расписание, домашка, нейросеть без интернета, переводчик с камерой и обмен с одноклассниками по Bluetooth. Бесплатно.</p>
+    <div class="cta">
+      <a class="btn primary dl-link" href="https://github.com/Mihabomber/SchoolHub/releases/latest">⬇ Скачать APK</a>
+      <a class="btn ghost" href="https://github.com/Mihabomber/SchoolHub">GitHub</a>
+    </div>
+    <p class="meta" id="meta">Ссылка всегда ведёт на последний релиз.</p>
+  </div>
+  <div class="phone"><div class="screen">
+    <div class="scard gcard"><h4>Твой телефон</h4>8.0 ГБ RAM · arm64</div>
+    <div class="scard"><h4>Qwen 3 · 4B</h4>🧠 Ум: 68/100 · ⚠️ ошибается ≈ 18%<div class="bar"><span style="width:68%;background:#2ecc71"></span></div></div>
+    <div class="scard"><h4>Gemma 3 · 1B</h4>🧠 Ум: 36/100 · ⚠️ ≈ 40%<div class="bar"><span style="width:36%;background:#f39c12"></span></div></div>
+    <div class="chat">Объясни теорему Пифагора</div>
+    <div class="ans">В прямоугольном треугольнике квадрат гипотенузы равен сумме квадратов катетов: c² = a² + b² ▍</div>
+  </div></div>
+</header>
+
+<section class="wrap reveal">
+  <div class="stats">
+    <div class="st"><b>15</b><span>моделей ИИ в каталоге</span></div>
+    <div class="st"><b>0 ₽</b><span>без подписок</span></div>
+    <div class="st"><b>офлайн</b><span>ИИ работает без сети</span></div>
+    <div class="st"><b>P2P</b><span>Bluetooth · Wi‑Fi Direct</span></div>
+  </div>
+</section>
+
+<section id="features" class="wrap reveal">
+  <h2>Возможности</h2>
+  <p class="sub">Всё, что нужно ученику каждый день, и работает даже без интернета.</p>
+  <div class="grid">
+    <div class="f"><div class="ic v">📝</div><h3>Шпаргалки</h3><p>Конспекты по предметам с формулами и форматированием. Делитесь ими с классом.</p></div>
+    <div class="f"><div class="ic s">🗓</div><h3>Расписание и звонки</h3><p>Уроки, звонки и напоминания всегда под рукой.</p></div>
+    <div class="f"><div class="ic o">📚</div><h3>Домашка и оценки</h3><p>Задания и оценки синхронизируются у всего класса.</p></div>
+    <div class="f"><div class="ic m">🤖</div><h3>ИИ-помощник</h3><p>Режимы: «Объясни просто», «Реши по шагам», «Проверь текст», English tutor, «Проверь меня».</p></div>
+    <div class="f"><div class="ic c">📷</div><h3>Переводчик с камерой</h3><p>Наведи камеру на текст: распознаёт латиницу и кириллицу и переводит.</p></div>
+    <div class="f"><div class="ic n">🧮</div><h3>Калькулятор и игры</h3><p>Калькулятор с красивой записью и мини-игры для перемены.</p></div>
+  </div>
+</section>
+
+<section id="ai" class="wrap reveal">
+  <h2>Нейросеть прямо в телефоне</h2>
+  <p class="sub">Модели работают через llama.cpp на процессоре телефона. Интернет нужен только чтобы один раз скачать модель.</p>
+  <div class="grid">
+    <div class="f"><div class="ic v">🧠</div><h3>Рейтинг ума</h3><p>У каждой модели оценка ума 0–100 и примерная доля ошибок. Сразу видно, какая умнее.</p></div>
+    <div class="f"><div class="ic m">✅</div><h3>Подбор под телефон</h3><p>Приложение смотрит RAM и свободное место и подсказывает, какая модель потянет.</p></div>
+    <div class="f"><div class="ic o">👁</div><h3>Видит фото</h3><p>Мультимодальные модели понимают рисунки, графики и задачи с картинки.</p></div>
+    <div class="f"><div class="ic s">⏯</div><h3>Надёжная загрузка</h3><p>Пауза, докачка с места обрыва и проверка файла после загрузки.</p></div>
+  </div>
+</section>
+
+<section id="sync" class="wrap reveal">
+  <h2>Обмен с классом</h2>
+  <p class="sub">Одинаковый код класса у всех — и данные расходятся сами.</p>
+  <div class="steps">
+    <div class="step"><div><b>Рядом, без интернета.</b> Bluetooth, Wi‑Fi Direct или локальная сеть: телефоны находят друг друга и обмениваются шпаргалками.</div></div>
+    <div class="step"><div><b>Через интернет.</b> Изменения уходят через бесплатный брокер и доходят до одноклассников на любом расстоянии.</div></div>
+    <div class="step"><div><b>Шифрование.</b> Код класса шифрует данные обмена: посторонние видят только шифротекст.</div></div>
+  </div>
+</section>
+
+<section id="download" class="wrap reveal">
+  <div class="dl">
+    <h2>Скачать Парту</h2>
+    <p class="sub" style="margin:0 auto" id="dlinfo">Последняя версия для Android 8.0+. Установи APK и разреши установку из этого источника.</p>
+    <a class="btn primary dl-link" href="https://github.com/Mihabomber/SchoolHub/releases/latest">⬇ Скачать последнюю версию</a>
+    <p class="meta"><a href="https://github.com/Mihabomber/SchoolHub/releases" style="text-decoration:underline">Все версии и история изменений</a></p>
+  </div>
+</section>
+
+<footer class="wrap">© <span id="y"></span> Парта (SchoolHub). Исходный код на <a href="https://github.com/Mihabomber/SchoolHub">GitHub</a>.</footer>
+
+<script>
+document.getElementById('y').textContent=new Date().getFullYear();
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('on')}),{threshold:.12});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+// Ссылка на скачивание всегда берётся из последнего релиза GitHub.
+fetch('https://api.github.com/repos/Mihabomber/SchoolHub/releases/latest',{headers:{Accept:'application/vnd.github+json'}})
+ .then(r=>r.ok?r.json():Promise.reject(r.status))
+ .then(rel=>{
+   const apk=(rel.assets||[]).find(a=>/\.apk$/i.test(a.name));
+   if(apk)document.querySelectorAll('.dl-link').forEach(a=>a.href=apk.browser_download_url);
+   const d=new Date(rel.published_at).toLocaleDateString('ru-RU');
+   const size=apk?' · '+(apk.size/1048576).toFixed(0)+' МБ':'';
+   document.getElementById('ver').textContent='Версия '+(rel.tag_name||rel.name)+' · '+d;
+   document.getElementById('meta').textContent='Последний релиз '+(rel.tag_name||'')+' от '+d+size;
+   document.getElementById('dlinfo').textContent='Версия '+(rel.tag_name||'')+' от '+d+size+'. Android 8.0+.';
+ })
+ .catch(()=>{document.getElementById('meta').textContent='Релиз скоро появится. Пока ссылка ведёт на страницу релизов.'});
+</script>
+</body>
+</html>
