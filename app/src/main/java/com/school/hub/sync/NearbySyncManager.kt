@@ -1,8 +1,11 @@
 package com.school.hub.sync
 
 import android.Manifest
+import android.bluetooth.BluetoothManager
 import android.content.Context
+import android.location.LocationManager
 import android.os.Build
+import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.AdvertisingOptions
 import com.google.android.gms.nearby.connection.ConnectionInfo
@@ -18,6 +21,7 @@ import com.google.android.gms.nearby.connection.Strategy
 import com.school.hub.core.data.SettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,6 +48,7 @@ data class NearbyState(
     val sentTotal: Int = 0,
 )
 
+
 /**
  * Обмен шпаргалками без интернета через Google Nearby Connections.
  * Сам выбирает канал: Bluetooth Classic, BLE, Wi-Fi Direct / точка доступа, LAN.
@@ -51,6 +56,9 @@ data class NearbyState(
  * Топология P2P_CLUSTER: каждый с каждым. Устройства одного класса (одинаковый код класса)
  * находят друг друга, обмениваются полными снимками базы, сливают их (LWW),
  * а новые изменения пересылают остальным подключённым — "сарафанное радио".
+ *
+ * Надёжность: перед стартом сбрасываем старые сессии; устройство с меньшим id подключается сразу,
+ * второе — запасным запросом через 4 с, если первое не смогло. Неудачные попытки повторяются до 3 раз.
  */
 class NearbySyncManager(
     private val context: Context,
@@ -66,6 +74,9 @@ class NearbySyncManager(
     private val incoming = mutableMapOf<Long, Pair<String, Payload>>()
     private val outgoing = mutableMapOf<Long, Pair<String, File>>()
     private val connected = mutableSetOf<String>()
+    private val requested = mutableSetOf<String>()
+    private val retries = mutableMapOf<String, Int>()
+    private val names = mutableMapOf<String, String>()
     private var activeServiceId = ""
 
     /** Счётчики для админ-статистики. */
@@ -77,17 +88,42 @@ class NearbySyncManager(
 
     fun start() {
         if (_state.value.running) return
+        // Сбрасываем зависшие сессии от прошлого запуска — иначе старт может молча не сработать.
+        runCatching {
+            client.stopAdvertising()
+            client.stopDiscovery()
+            client.stopAllEndpoints()
+        }
+        connected.clear(); incoming.clear(); outgoing.clear(); requested.clear(); retries.clear(); names.clear()
         activeServiceId = serviceId
         _state.update { it.copy(running = true, peers = emptyList()) }
         log("Ищу одноклассников с кодом «${settings.effectiveClassCode}»…")
+        var failures = 0
+        fun failed() {
+            failures++
+            if (failures >= 2) {
+                _state.update { it.copy(running = false) }
+                log("Обмен не запустился. Проверь Bluetooth, Wi‑Fi и разрешения.")
+            }
+        }
         client.startAdvertising(
             localName, activeServiceId, connectionCallback,
             AdvertisingOptions.Builder().setStrategy(strategy).build(),
-        ).addOnFailureListener { log("Не удалось стать видимым: ${it.message}") }
+        ).addOnFailureListener { e ->
+            val code = (e as? ApiException)?.statusCode
+            if (code == 8001) return@addOnFailureListener // уже видим
+            log("Не удалось стать видимым: ${explain(e)}")
+            failed()
+        }
         client.startDiscovery(
             activeServiceId, discoveryCallback,
             DiscoveryOptions.Builder().setStrategy(strategy).build(),
-        ).addOnFailureListener { log("Не удалось начать поиск: ${it.message}") }
+        ).addOnFailureListener { e ->
+            val code = (e as? ApiException)?.statusCode
+            if (code == 8002) return@addOnFailureListener // уже ищем
+            log("Не удалось начать поиск: ${explain(e)}")
+            failed()
+        }
     }
 
     fun stop() {
@@ -97,9 +133,47 @@ class NearbySyncManager(
             client.stopDiscovery()
             client.stopAllEndpoints()
         }
-        connected.clear(); incoming.clear(); outgoing.clear()
+        connected.clear(); incoming.clear(); outgoing.clear(); requested.clear(); retries.clear()
         _state.update { it.copy(running = false, peers = emptyList()) }
         log("Обмен остановлен")
+    }
+
+    private fun explain(e: Exception): String = when ((e as? ApiException)?.statusCode) {
+        8003 -> "уже подключено"
+        8007 -> "ошибка Bluetooth — выключи и включи Bluetooth"
+        8012 -> "ошибка связи — подойди ближе и попробуй снова"
+        8032, 8033, 8034, 8035, 8036, 8037, 8038, 8039 -> "нет разрешения — выдай его в настройках приложения"
+        17 -> "обнови сервисы Google Play"
+        else -> e.message ?: "неизвестная ошибка"
+    }
+
+    private fun requestTo(endpointId: String, name: String) {
+        if (!_state.value.running || endpointId in connected || endpointId in requested) return
+        requested += endpointId
+        setPeer(endpointId, name, PeerStatus.CONNECTING)
+        client.requestConnection(localName, endpointId, connectionCallback)
+            .addOnFailureListener { e ->
+                requested -= endpointId
+                if ((e as? ApiException)?.statusCode == 8003) return@addOnFailureListener
+                log("Не подключился к $name: ${explain(e)}")
+                setPeer(endpointId, name, PeerStatus.FAILED)
+                retryLater(endpointId, name)
+            }
+    }
+
+    private fun retryLater(endpointId: String, name: String) {
+        val n = (retries[endpointId] ?: 0) + 1
+        if (n > 3) return
+        retries[endpointId] = n
+        scope.launch {
+            delay(3000L * n)
+            withContext(Dispatchers.Main) {
+                if (_state.value.running && endpointId !in connected && endpointId !in requested && names.containsKey(endpointId)) {
+                    log("Повторяю подключение к $name ($n/3)…")
+                    requestTo(endpointId, name)
+                }
+            }
+        }
     }
 
     // ---------------- callbacks ----------------
@@ -108,46 +182,61 @@ class NearbySyncManager(
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
             val (name, remoteId) = parseName(info.endpointName)
             if (remoteId == settings.deviceId) return
+            names[endpointId] = name
             setPeer(endpointId, name, PeerStatus.FOUND)
             // Тай-брейк: соединение инициирует устройство с "меньшим" id — без встречных запросов.
             if (settings.deviceId < remoteId) {
-                setPeer(endpointId, name, PeerStatus.CONNECTING)
-                client.requestConnection(localName, endpointId, connectionCallback)
-                    .addOnFailureListener { e ->
-                        log("Не подключился к $name: ${e.message}")
-                        setPeer(endpointId, name, PeerStatus.FAILED)
+                requestTo(endpointId, name)
+            } else {
+                // Запасной путь: если другое устройство нас не видит (асимметричный поиск), подключаемся сами.
+                scope.launch {
+                    delay(4000)
+                    withContext(Dispatchers.Main) {
+                        val peer = _state.value.peers.firstOrNull { it.endpointId == endpointId }
+                        if (_state.value.running && endpointId !in connected && endpointId !in requested && peer?.status == PeerStatus.FOUND) {
+                            requestTo(endpointId, name)
+                        }
                     }
+                }
             }
         }
 
         override fun onEndpointLost(endpointId: String) {
-            if (endpointId !in connected) removePeer(endpointId)
+            names.remove(endpointId)
+            if (endpointId !in connected) { requested -= endpointId; removePeer(endpointId) }
         }
     }
 
     private val connectionCallback = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
             val (name, _) = parseName(info.endpointName)
+            names[endpointId] = name
             setPeer(endpointId, name, PeerStatus.CONNECTING)
             client.acceptConnection(endpointId, payloadCallback)
+                .addOnFailureListener { e -> log("Не принял соединение от $name: ${explain(e)}") }
         }
 
         override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {
             val name = peerName(endpointId)
+            requested -= endpointId
             if (result.status.isSuccess) {
                 connected += endpointId
+                retries.remove(endpointId)
                 setPeer(endpointId, name, PeerStatus.CONNECTED)
                 log("🔗 Подключено: $name")
                 sendSnapshot(endpointId)
             } else {
                 setPeer(endpointId, name, PeerStatus.FAILED)
                 log("Соединение с $name не удалось (${result.status.statusCode})")
+                retryLater(endpointId, name)
             }
         }
 
         override fun onDisconnected(endpointId: String) {
+            val name = peerName(endpointId)
             connected -= endpointId
-            log("Отключился: ${peerName(endpointId)}")
+            requested -= endpointId
+            log("Отключился: $name")
             removePeer(endpointId)
         }
     }
@@ -251,7 +340,7 @@ class NearbySyncManager(
     }
 
     private fun peerName(endpointId: String) =
-        _state.value.peers.firstOrNull { it.endpointId == endpointId }?.name ?: "устройство"
+        _state.value.peers.firstOrNull { it.endpointId == endpointId }?.name ?: names[endpointId] ?: "устройство"
 
     private fun setPeer(endpointId: String, name: String, status: PeerStatus) {
         _state.update { s ->
@@ -282,5 +371,24 @@ class NearbySyncManager(
                 add(Manifest.permission.ACCESS_COARSE_LOCATION)
             }
         }.toTypedArray()
+
+        /** Геолокация на Android 13+ не обязательна, но ускоряет поиск на части телефонов. */
+        fun optionalPermissions(): Array<String> =
+            if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            else emptyArray()
+
+        fun needsLocation(): Boolean = Build.VERSION.SDK_INT <= 32
+
+        /** null — в телефоне нет Bluetooth. */
+        fun isBluetoothOn(ctx: Context): Boolean? = runCatching {
+            val adapter = ctx.getSystemService(BluetoothManager::class.java)?.adapter ?: return@runCatching null
+            adapter.isEnabled
+        }.getOrNull()
+
+        fun isLocationOn(ctx: Context): Boolean = runCatching {
+            val lm = ctx.getSystemService(LocationManager::class.java) ?: return@runCatching true
+            if (Build.VERSION.SDK_INT >= 28) lm.isLocationEnabled
+            else lm.isProviderEnabled(LocationManager.GPS_PROVIDER) || lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        }.getOrDefault(true)
     }
 }
