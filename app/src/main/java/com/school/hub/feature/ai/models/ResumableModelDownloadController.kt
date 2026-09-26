@@ -27,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
- * Resumable model transfer coordinator.
+ * Resumable model transfer coordinator (one instance per process, see [get]).
  * Incomplete files stay in .part files. A vision model has two files (main GGUF + mmproj GGUF);
  * the model is INSTALLED only after every file passed the GGUF and size checks.
  */
@@ -53,7 +53,7 @@ class ResumableModelDownloadController(
         val part: File get() = File(file.path + ".part")
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobs = ConcurrentHashMap<String, Job>()
     private val states = MutableStateFlow<Map<String, State>>(emptyMap())
     private val client = OkHttpClient.Builder()
@@ -62,11 +62,16 @@ class ResumableModelDownloadController(
         .retryOnConnectionFailure(true)
         .build()
 
+    /** Called when the last active transfer ends (finished, failed, paused or cancelled). */
+    var onIdle: (() -> Unit)? = null
+
     init { directory.mkdirs() }
 
     fun observe(): StateFlow<Map<String, State>> = states.asStateFlow()
 
     fun state(model: LlmModel): State = states.value[model.id] ?: initialState(model)
+
+    fun isActive(model: LlmModel): Boolean = jobs[model.id]?.isActive == true
 
     fun start(model: LlmModel, expectedSha256: String? = null) {
         if (jobs[model.id]?.isActive == true) return
@@ -89,7 +94,8 @@ class ResumableModelDownloadController(
                 publish(model.id, state(model).copy(status = Status.ERROR, message = userMessage(t)))
             } finally {
                 val self = coroutineContext[Job]
-                if (jobs[model.id] === self) jobs.remove(model.id)
+                jobs.remove(model.id, self)
+                notifyIfIdle()
             }
         }
         jobs[model.id] = job
@@ -98,18 +104,25 @@ class ResumableModelDownloadController(
     fun pause(model: LlmModel) {
         jobs.remove(model.id)?.cancel()
         publish(model.id, initialState(model))
+        notifyIfIdle()
     }
 
     fun cancel(model: LlmModel) {
         jobs.remove(model.id)?.cancel()
         pieces(model).forEach { it.part.delete() }
         publish(model.id, initialState(model))
+        notifyIfIdle()
     }
 
     fun delete(model: LlmModel) {
         jobs.remove(model.id)?.cancel()
         pieces(model).forEach { it.part.delete(); it.file.delete() }
         publish(model.id, initialState(model))
+        notifyIfIdle()
+    }
+
+    private fun notifyIfIdle() {
+        if (jobs.values.none { it.isActive }) runCatching { onIdle?.invoke() }
     }
 
     private fun pieces(model: LlmModel): List<Piece> {
@@ -133,8 +146,9 @@ class ResumableModelDownloadController(
             val base = before
             publish(model.id, State(Status.DOWNLOADING, base + piece.part.length(), base + piece.expectedBytes + rest))
             var attempt = 0
-            var serverTotal: Long?
-            while (true) {
+            var serverTotal: Long? = null
+            var finished = false
+            while (!finished) {
                 try {
                     serverTotal = fetch(piece.url, piece.part) { done, total, speed ->
                         val size = if (total > 0L) total else piece.expectedBytes
@@ -143,7 +157,7 @@ class ResumableModelDownloadController(
                         val eta = if (speed > 0L) (allTotal - allDone).coerceAtLeast(0L) / speed else null
                         publish(model.id, State(Status.DOWNLOADING, allDone, allTotal, speed, eta))
                     }
-                    break
+                    finished = true
                 } catch (c: CancellationException) {
                     throw c
                 } catch (t: Throwable) {
@@ -160,8 +174,9 @@ class ResumableModelDownloadController(
                 }
             }
             publish(model.id, state(model).copy(status = Status.VERIFYING, message = "Проверка файла…"))
-            val strict = serverTotal != null && serverTotal > 0L
-            val expected = if (strict) serverTotal!! else piece.expectedBytes
+            val known = serverTotal ?: -1L
+            val strict = known > 0L
+            val expected = if (strict) known else piece.expectedBytes
             if (!verify(piece.part, expected, strict, if (index == 0) sha256 else null)) {
                 piece.part.delete()
                 publish(model.id, State(Status.CORRUPTED, message = "Файл модели повреждён. Скачайте заново"))
@@ -189,7 +204,7 @@ class ResumableModelDownloadController(
             val append = response.code == 206 && offset > 0L
             if (!append) part.delete()
             val start = if (append) offset else 0L
-            val total = response.header("Content-Range")?.substringAfter('/')?.toLongOrNull()
+            val total: Long? = response.header("Content-Range")?.substringAfter('/')?.toLongOrNull()
                 ?: body.contentLength().takeIf { it >= 0L }?.let { start + it }
             var done = start
             var lastTime = System.nanoTime()
@@ -273,7 +288,14 @@ class ResumableModelDownloadController(
         else -> t.message?.takeIf { it.isNotBlank() } ?: "Не удалось загрузить модель"
     }
 
-    private companion object {
-        const val MAX_ATTEMPTS = 6
+    companion object {
+        private const val MAX_ATTEMPTS = 6
+
+        @Volatile private var instance: ResumableModelDownloadController? = null
+
+        fun get(context: Context): ResumableModelDownloadController =
+            instance ?: synchronized(this) {
+                instance ?: ResumableModelDownloadController(context.applicationContext).also { instance = it }
+            }
     }
 }

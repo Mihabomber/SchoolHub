@@ -17,11 +17,10 @@ import com.school.hub.R
 import com.school.hub.core.data.SettingsStore
 import com.school.hub.feature.ai.engine.ChatFormat
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.stateIn
 import java.io.File
 
 enum class Tier(val title: String) { LITE("Лёгкие — для любых телефонов"), MID("Средние — баланс ума и скорости"), PRO("Мощные — для флагманов") }
@@ -69,25 +68,30 @@ sealed interface ModelStatus {
 }
 
 class ModelDownloader(private val context: Context, private val settings: SettingsStore) {
-    private val controller = ResumableModelDownloadController(context)
-    val dir get() = File(controllerDirectory(), "")
+    private val controller = ResumableModelDownloadController.get(context).also { c ->
+        val app = context.applicationContext
+        c.onIdle = { DownloadService.stop(app) }
+    }
+    val dir: File get() = controllerDirectory()
     private fun controllerDirectory() = (context.getExternalFilesDir("models") ?: File(context.filesDir,"models")).apply { mkdirs() }
     fun file(m: LlmModel) = File(controllerDirectory(),m.fileName)
     fun mmprojFile(m: LlmModel) = File(controllerDirectory(),m.mmprojFileName)
     fun freeSpaceMb() = StatFs(controllerDirectory().absolutePath).availableBytes / (1024*1024)
-    fun isReady(m: LlmModel) = controller.state(m).status == ResumableModelDownloadController.Status.INSTALLED
+    fun isReady(m: LlmModel) = file(m).exists() && controller.state(m).status == ResumableModelDownloadController.Status.INSTALLED
     fun isVisionReady(m: LlmModel) = !m.vision || mmprojFile(m).exists()
     fun start(m: LlmModel,wifiOnly: Boolean): Result<Unit> = runCatching {
         if(wifiOnly) { val cm=context.getSystemService(ConnectivityManager::class.java); val c=cm?.getNetworkCapabilities(cm.activeNetwork); require(c?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)==true || c?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)==true) { "Подключитесь к Wi‑Fi или выключите ограничение" } }
-        controller.start(m); DownloadService.start(context)
+        controller.start(m)
+        if (controller.isActive(m)) DownloadService.start(context)
     }
     fun pause(m: LlmModel) = controller.pause(m)
-    fun resume(m: LlmModel) = controller.start(m)
+    fun resume(m: LlmModel) { controller.start(m); if (controller.isActive(m)) DownloadService.start(context) }
     fun cancel(m: LlmModel) = controller.cancel(m)
     fun delete(m: LlmModel) = controller.delete(m)
     fun status(m: LlmModel): ModelStatus { val s=controller.state(m); return when(s.status) { ResumableModelDownloadController.Status.NOT_INSTALLED -> ModelStatus.NotDownloaded; ResumableModelDownloadController.Status.DOWNLOADING -> ModelStatus.Downloading(s.downloadedBytes/1048576,s.totalBytes/1048576,false,s.speedBytesPerSecond/1024,s.etaSeconds); ResumableModelDownloadController.Status.PAUSED -> ModelStatus.Paused; ResumableModelDownloadController.Status.WAITING_FOR_CONNECTION -> ModelStatus.WaitingForConnection; ResumableModelDownloadController.Status.VERIFYING -> ModelStatus.Verifying; ResumableModelDownloadController.Status.INSTALLED -> ModelStatus.Ready; ResumableModelDownloadController.Status.CORRUPTED -> ModelStatus.Corrupted; ResumableModelDownloadController.Status.ERROR -> ModelStatus.Failed(s.message ?: "Не удалось загрузить модель") } }
-    fun observe(): Flow<Map<String,ModelStatus>> = controller.observe().map { ModelCatalog.models.associateWith { status(it) }.mapKeys { it.key.id } }.onStart { emit(ModelCatalog.models.associate { it.id to status(it) }) }
-    val states: StateFlow<Map<String,ModelStatus>> get() = observe().let { flow -> MutableStateFlow(ModelCatalog.models.associate { it.id to status(it) }) }
+    private fun snapshot(): Map<String,ModelStatus> = ModelCatalog.models.associate { it.id to status(it) }
+    fun observe(): Flow<Map<String,ModelStatus>> = states
+    val states: StateFlow<Map<String,ModelStatus>> = controller.observe().map { snapshot() }.stateIn(controller.scope, SharingStarted.Eagerly, snapshot())
 }
 
 class DownloadService: Service() {
