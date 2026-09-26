@@ -29,7 +29,7 @@ jobs:
           export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
           echo "ANDROID_HOME=$ANDROID_HOME"
           ls $ANDROID_HOME/cmdline-tools/
-          yes | sdkmanager --licenses || true
+          yes | sdkmanager --licenses > /dev/null || true
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Install NDK and CMake
@@ -72,24 +72,55 @@ jobs:
       - name: "1) Full: llama.cpp b8720 + vision (Gemma 4)"
         id: s1
         continue-on-error: true
-        run: gradle assembleDebug -PwithLlama=true -PwithVision=true -PllamaTag=b8720 --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle assembleDebug -PwithLlama=true -PwithVision=true -PllamaTag=b8720 --no-daemon --stacktrace 2>&1 | tee s1.log
 
       - name: "2) llama.cpp b8720 without vision"
         id: s2
         if: steps.s1.outcome == 'failure'
         continue-on-error: true
-        run: gradle clean assembleDebug -PwithLlama=true -PwithVision=false -PllamaTag=b8720 --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle clean assembleDebug -PwithLlama=true -PwithVision=false -PllamaTag=b8720 --no-daemon --stacktrace 2>&1 | tee s2.log
 
       - name: "3) llama.cpp b6550 (older, stable) + vision"
         id: s3
         if: steps.s1.outcome == 'failure' && steps.s2.outcome == 'failure'
         continue-on-error: true
-        run: gradle clean assembleDebug -PwithLlama=true -PwithVision=true -PllamaTag=b6550 --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle clean assembleDebug -PwithLlama=true -PwithVision=true -PllamaTag=b6550 --no-daemon --stacktrace 2>&1 | tee s3.log
 
       - name: "4) Fallback without AI engine"
         id: s4
         if: steps.s1.outcome == 'failure' && steps.s2.outcome == 'failure' && steps.s3.outcome == 'failure'
-        run: gradle clean assembleDebug -PwithLlama=false --no-daemon --stacktrace
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          gradle clean assembleDebug -PwithLlama=false --no-daemon --stacktrace 2>&1 | tee s4.log
+
+      # Ошибки компиляции видны в аннотациях запуска, без скачивания полного лога.
+      - name: Report errors
+        if: always()
+        run: |
+          for f in s1 s2 s3 s4; do
+            [ -f "$f.log" ] || continue
+            grep -E '^e: |error:|What went wrong|FAILED' -A2 "$f.log" \
+              | grep -vE '^--$|^\s*$|at org\.gradle|at java\.|at kotlin\.' \
+              | sed 's#file:///home/runner/work/SchoolHub/SchoolHub/##; s#/home/runner/work/SchoolHub/SchoolHub/##' \
+              | cut -c1-400 | awk '!seen[$0]++' | head -40 > "$f.err" || true
+            if [ -s "$f.err" ]; then
+              msg=$(sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g' "$f.err")
+              echo "::error title=$f::$msg"
+            fi
+          done
+
+      - name: Check result
+        if: steps.s1.outcome != 'success' && steps.s2.outcome != 'success' && steps.s3.outcome != 'success' && steps.s4.outcome != 'success'
+        run: |
+          echo "::error::Ни один вариант сборки не прошёл"
+          exit 1
 
       - name: Prepare APK
         run: |
