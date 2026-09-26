@@ -18,6 +18,7 @@ object Routes {
     const val BROWSER = "browser"
     const val CHAT = "chat"
     const val ADMIN = "admin"
+    const val NOTEBOOK = "notebook"
     const val CHEAT_DETAIL = "cheat/{id}"
     const val CHEAT_EDIT = "cheat_edit?id={id}"
 

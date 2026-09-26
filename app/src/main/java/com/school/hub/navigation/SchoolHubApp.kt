@@ -5,9 +5,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Home
@@ -22,8 +25,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -60,6 +65,8 @@ import com.school.hub.feature.auth.AuthState
 import com.school.hub.feature.browser.MiniBrowserScreen
 import com.school.hub.feature.calc.CalculatorScreen
 import com.school.hub.feature.games.GamesScreen
+import com.school.hub.feature.notebook.NotebookGlitchButton
+import com.school.hub.feature.notebook.NotebookScreen
 import com.school.hub.feature.social.GlobalChatScreen
 
 private data class TopDest(val route: String, val label: String, val icon: ImageVector)
@@ -120,11 +127,28 @@ private fun MainApp(isAdmin: Boolean) {
             modifier = Modifier.padding(padding).consumeWindowInsets(padding),
         ) {
             composable(Routes.HOME) {
-                HomeScreen(
-                    onNavigate = { route ->
-                        if (dests.any { it.route == route }) nav.navigateTopLevel(route) else nav.navigate(route)
+                Box(Modifier.fillMaxSize()) {
+                    HomeScreen(
+                        onNavigate = { route ->
+                            if (dests.any { it.route == route }) nav.navigateTopLevel(route) else nav.navigate(route)
+                        },
+                        onOpenCheat = { nav.navigate(Routes.cheatDetail(it)) },
+                    )
+                    NotebookGlitchButton(
+                        onClick = { nav.navigate(Routes.NOTEBOOK) },
+                        modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 4.dp, end = 16.dp),
+                    )
+                }
+            }
+            composable(Routes.NOTEBOOK) {
+                NotebookScreen(
+                    onBack = { nav.popBackStack() },
+                    onExitToMenuTop = {
+                        nav.navigate(Routes.HOME) {
+                            popUpTo(Routes.HOME) { inclusive = true }
+                            launchSingleTop = true
+                        }
                     },
-                    onOpenCheat = { nav.navigate(Routes.cheatDetail(it)) },
                 )
             }
             composable(Routes.CHEATS) {
