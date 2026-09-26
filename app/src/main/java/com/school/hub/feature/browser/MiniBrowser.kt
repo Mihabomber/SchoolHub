@@ -21,7 +21,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -48,8 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardActions
-import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -90,13 +89,14 @@ fun MiniBrowserScreen(onClose: () -> Unit) {
 
     fun openExternal(uri: Uri) {
         try {
-            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+            context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (_: Exception) {
             hasError = true
         }
     }
 
     fun loadInput(input: String) {
+        if (input.isBlank()) return
         val uri = Uri.parse(toUrl(input))
         if (isWebUrl(uri)) {
             hasError = false
@@ -107,11 +107,7 @@ fun MiniBrowserScreen(onClose: () -> Unit) {
     }
 
     BackHandler {
-        if (web?.canGoBack() == true) {
-            web?.goBack()
-        } else {
-            onClose()
-        }
+        if (web?.canGoBack() == true) web?.goBack() else onClose()
     }
 
     DisposableEffect(Unit) {
@@ -127,10 +123,7 @@ fun MiniBrowserScreen(onClose: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        Row(
-            Modifier.fillMaxWidth().padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) {
                 Icon(Icons.Filled.Close, contentDescription = "Закрыть")
             }
@@ -139,38 +132,26 @@ fun MiniBrowserScreen(onClose: () -> Unit) {
                 onValueChange = { address = it },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                label = { if (title.isNotBlank()) Text(title) },
+                label = if (title.isNotBlank()) ({ Text(title, maxLines = 1) }) else null,
                 placeholder = { Text("Поиск или адрес") },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Uri,
-                    imeAction = ImeAction.Go
-                ),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                 keyboardActions = KeyboardActions(onGo = { loadInput(address) })
             )
         }
 
         if (loading) {
-            LinearProgressIndicator(
-                progress = { progress / 100f },
-                modifier = Modifier.fillMaxWidth()
-            )
+            LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
         }
 
         if (hasError) {
             Column(
-                Modifier.fillMaxSize().weight(1f).padding(24.dp),
+                Modifier.fillMaxWidth().weight(1f).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
                 Text("Нет соединения", style = MaterialTheme.typography.headlineSmall)
                 Text("Страница не открылась", modifier = Modifier.padding(top = 8.dp))
-                Button(
-                    onClick = {
-                        hasError = false
-                        web?.reload()
-                    },
-                    modifier = Modifier.padding(top = 16.dp)
-                ) {
+                Button(onClick = { hasError = false; web?.reload() }, modifier = Modifier.padding(top = 16.dp)) {
                     Text("Повторить")
                 }
             }
@@ -189,26 +170,9 @@ fun MiniBrowserScreen(onClose: () -> Unit) {
                         settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
                         webViewClient = object : WebViewClient() {
-                            override fun shouldOverrideUrlLoading(
-                                view: WebView,
-                                request: WebResourceRequest
-                            ): Boolean {
+                            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                                 val uri = request.url
-                                return if (isWebUrl(uri)) {
-                                    false
-                                } else {
-                                    openExternal(uri)
-                                    true
-                                }
-                            }
-
-                            @Suppress("DEPRECATION")
-                            override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
-                                val uri = Uri.parse(url)
-                                return if (isWebUrl(uri)) false else {
-                                    openExternal(uri)
-                                    true
-                                }
+                                return if (isWebUrl(uri)) false else { openExternal(uri); true }
                             }
 
                             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
@@ -225,33 +189,14 @@ fun MiniBrowserScreen(onClose: () -> Unit) {
                                 updateNavigation(view)
                             }
 
-                            override fun onReceivedError(
-                                view: WebView,
-                                request: WebResourceRequest,
-                                error: WebResourceError
-                            ) {
+                            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                                 if (request.isForMainFrame) {
                                     loading = false
                                     hasError = true
                                 }
                             }
 
-                            @Suppress("DEPRECATION")
-                            override fun onReceivedError(
-                                view: WebView,
-                                errorCode: Int,
-                                description: String?,
-                                failingUrl: String?
-                            ) {
-                                loading = false
-                                hasError = true
-                            }
-
-                            override fun onReceivedSslError(
-                                view: WebView,
-                                handler: SslErrorHandler,
-                                error: android.net.http.SslError
-                            ) {
+                            override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) {
                                 handler.cancel()
                                 loading = false
                                 hasError = true
@@ -286,11 +231,14 @@ fun MiniBrowserScreen(onClose: () -> Unit) {
                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Вперёд")
             }
             Spacer(Modifier.weight(1f))
-            IconButton(onClick = { web?.reload() }, enabled = loading) {
-                Icon(Icons.Filled.Stop, contentDescription = "Остановить")
-            }
-            IconButton(onClick = { web?.reload() }, enabled = !loading) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Обновить")
+            if (loading) {
+                IconButton(onClick = { web?.stopLoading(); loading = false }) {
+                    Icon(Icons.Filled.Stop, contentDescription = "Остановить")
+                }
+            } else {
+                IconButton(onClick = { hasError = false; web?.reload() }) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Обновить")
+                }
             }
         }
     }
