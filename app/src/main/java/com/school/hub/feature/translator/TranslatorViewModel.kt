@@ -120,7 +120,10 @@ class TranslatorViewModel(
         cameraBusy = true
         viewModelScope.launch {
             runCatching {
-                val blocks = repo.recognize(bmp)
+                val needDict = repo.needsCyrillicDownload(source, target)
+                if (needDict) status = "Скачиваю словарь для русского текста (один раз)…"
+                val blocks = repo.recognize(bmp, source, target)
+                if (needDict) status = if (repo.cyrillicReady()) null else "Не удалось скачать словарь для русского текста: нужен интернет. Пока распознаю только латиницу."
                 if (blocks.isEmpty()) { camera = CameraResult(bmp, emptyList()); status = "Текст не найден"; return@runCatching }
                 val src = if (source != AUTO) source else repo.detect(blocks.joinToString(" ") { it.text }) ?: "en"
                 camera = CameraResult(bmp, blocks)

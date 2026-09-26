@@ -8,6 +8,7 @@ class SchoolApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        com.school.hub.feature.translator.CyrillicOcr.init(this)
         container = AppContainer(this)
         container.start()
     }

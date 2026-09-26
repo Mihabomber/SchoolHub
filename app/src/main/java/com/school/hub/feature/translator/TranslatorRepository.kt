@@ -92,7 +92,35 @@ class TranslatorRepository(
         models.deleteDownloadedModel(TranslateRemoteModel.Builder(code).build()).await()
     }
 
-    suspend fun recognize(bitmap: Bitmap): List<OcrBlock> {
+    // ---------- распознавание текста на фото ----------
+
+    /** Русский текст возможен: язык фото выбран «Русский» или «Авто» с переводом не на русский. */
+    private fun wantsCyrillic(source: String, target: String) = source == "ru" || (source == AUTO && target != "ru")
+
+    /** Нужно скачать словарь для русского текста (один раз). */
+    fun needsCyrillicDownload(source: String, target: String): Boolean = wantsCyrillic(source, target) && !CyrillicOcr.ready()
+
+    fun cyrillicReady(): Boolean = CyrillicOcr.ready()
+
+    /**
+     * ML Kit распознаёт латиницу, Tesseract нужен для кириллицы.
+     * В режиме «Авто» запускаются оба, и берётся результат Tesseract, только если в нём в основном кириллица.
+     * Если словаря нет и скачать его не вышло, работает только ML Kit.
+     */
+    suspend fun recognize(bitmap: Bitmap, source: String = AUTO, target: String = "ru"): List<OcrBlock> {
+        val wants = wantsCyrillic(source, target)
+        if (wants && !CyrillicOcr.ready()) runCatching { CyrillicOcr.download() }
+        val ru = if (wants && CyrillicOcr.ready()) runCatching { CyrillicOcr.recognize(bitmap) }.getOrNull().orEmpty() else emptyList()
+        if (source == "ru" && ru.isNotEmpty()) return ru
+        val latin = recognizeLatin(bitmap)
+        if (ru.isEmpty()) return latin
+        val ruLetters = ru.sumOf { b -> b.text.count { it.isLetter() } }
+        val cyr = ru.sumOf { b -> b.text.count { it in '\u0400'..'\u04FF' } }
+        val latinLetters = latin.sumOf { b -> b.text.count { it.isLetter() } }
+        return if (cyr * 2 >= ruLetters && ruLetters * 10 >= latinLetters * 6) ru else latin
+    }
+
+    private suspend fun recognizeLatin(bitmap: Bitmap): List<OcrBlock> {
         val result = recognizer.process(InputImage.fromBitmap(bitmap, 0)).await()
         return result.textBlocks.mapNotNull { b ->
             val r = b.boundingBox ?: return@mapNotNull null
