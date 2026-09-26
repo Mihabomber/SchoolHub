@@ -50,13 +50,14 @@ class AuthViewModel(val repo: AuthRepository) : ViewModel() {
     }
 
     fun login(e: String, p: String) = run { repo.login(e, p) }
-    fun register(f: String, l: String, e: String, p: String) = run("Письмо для подтверждения отправлено на $e") { repo.register(f, l, e, p) }
+    fun register(f: String, l: String, e: String, p: String, consent: Boolean) =
+        run("Письмо для подтверждения отправлено на $e") { repo.register(f, l, e, p, consent) }
     fun reset(e: String) = run("Ссылка для сброса пароля отправлена на $e") { repo.resetPassword(e) }
     fun resend() = run("Письмо отправлено ещё раз (проверь «Спам»)") { repo.resendVerification() }
     fun check() = run { repo.checkVerified() }
     fun google(a: Activity) = run { repo.google(a) }
     fun apple(a: Activity) = run { repo.apple(a) }
-    fun saveProfile(f: String, l: String) = run { repo.saveProfile(f, l) }
+    fun saveProfile(f: String, l: String, consent: Boolean) = run { repo.saveProfile(f, l, consent) }
     fun logout() = run { repo.logout(); null }
 }
 
@@ -76,7 +77,7 @@ fun AuthGate(state: AuthState, vm: AuthViewModel = viewModel(factory = AppViewMo
             Modifier.fillMaxWidth().widthIn(max = 480.dp).verticalScroll(rememberScrollState()).systemBarsPadding().imePadding().padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("🎒", fontSize = 56.sp)
+            Text("\uD83C\uDF92", fontSize = 56.sp)
             Text("Парта", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold)
             Text("Школьный помощник всего класса", color = Color.White.copy(alpha = .8f))
             Spacer(Modifier.height(20.dp))
@@ -123,7 +124,9 @@ private fun SignInForm(vm: AuthViewModel) {
     var email by rememberSaveable { mutableStateOf("") }
     var pass by remember { mutableStateOf("") }
     var pass2 by remember { mutableStateOf("") }
-    var agree by rememberSaveable { mutableStateOf(false) }
+    var terms by rememberSaveable { mutableStateOf(false) }
+    var pd by rememberSaveable { mutableStateOf(false) }
+    val agreed = terms && pd
 
     TabRow(if (register) 1 else 0, containerColor = Color.Transparent) {
         Tab(!register, onClick = { register = false }, text = { Text("Вход") })
@@ -132,22 +135,19 @@ private fun SignInForm(vm: AuthViewModel) {
     if (register) {
         OutlinedTextField(first, { first = it }, label = { Text("Имя") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(last, { last = it }, label = { Text("Фамилия") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Warning("⚠ Укажи настоящие имя и фамилию. За ненастоящие имя и фамилию аккаунт блокируется.")
+        Warning("Имя и фамилию видят одноклассники и администратор класса.")
     }
     OutlinedTextField(email, { email = it.trim() }, label = { Text("Электронная почта") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email))
-    if (register) Warning("⚠ Только твоя настоящая почта — на неё придёт письмо с подтверждением. За чужую или несуществующую почту аккаунт блокируется.")
+    if (register) Warning("На эту почту придёт письмо с подтверждением.")
     PassField(pass, { pass = it }, "Пароль")
     if (register) {
         PassField(pass2, { pass2 = it }, "Повтори пароль")
         Warning("Минимум 8 символов, буквы и цифры. Пароль не видит никто, даже админ.")
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(agree, { agree = it })
-            Text("Согласен(на) на обработку имени и почты для работы аккаунта", style = MaterialTheme.typography.bodySmall)
-        }
+        ConsentChecks(terms, { terms = it }, pd, { pd = it })
         Button(
-            onClick = { vm.register(first, last, email, pass) },
-            enabled = !vm.busy && agree && pass == pass2 && pass.isNotEmpty(),
+            onClick = { vm.register(first, last, email, pass, agreed) },
+            enabled = !vm.busy && agreed && pass == pass2 && pass.isNotEmpty(),
             modifier = Modifier.fillMaxWidth().height(50.dp),
         ) { Text(if (pass2.isNotEmpty() && pass != pass2) "Пароли не совпадают" else "Создать аккаунт") }
     } else {
@@ -160,19 +160,21 @@ private fun SignInForm(vm: AuthViewModel) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         HorizontalDivider(Modifier.weight(1f)); Text("  или  ", style = MaterialTheme.typography.labelSmall); HorizontalDivider(Modifier.weight(1f))
     }
-    OutlinedButton(onClick = { vm.google(activity) }, enabled = !vm.busy, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+    if (!register) ConsentChecks(terms, { terms = it }, pd, { pd = it })
+    OutlinedButton(onClick = { vm.google(activity) }, enabled = !vm.busy && agreed, modifier = Modifier.fillMaxWidth().height(48.dp)) {
         Text("G", fontWeight = FontWeight.ExtraBold, color = Color(0xFF4285F4)); Spacer(Modifier.width(10.dp)); Text("Войти через Google")
     }
     Button(
-        onClick = { vm.apple(activity) }, enabled = !vm.busy, modifier = Modifier.fillMaxWidth().height(48.dp),
+        onClick = { vm.apple(activity) }, enabled = !vm.busy && agreed, modifier = Modifier.fillMaxWidth().height(48.dp),
         colors = ButtonDefaults.buttonColors(containerColor = Color.Black, contentColor = Color.White),
     ) { Text("Войти через Apple") }
-    Warning("Гостевого входа нет: у каждого ученика свой аккаунт. После входа через Google или Apple нужно будет указать настоящие имя и фамилию.")
+    if (!agreed) Warning("Для входа через Google или Apple отметь оба пункта выше.")
+    Warning("Гостевого входа нет: у каждого ученика свой аккаунт. После входа через Google или Apple нужно будет указать имя и фамилию.")
 }
 
 @Composable
 private fun VerifyForm(email: String, vm: AuthViewModel) {
-    Text("📧 Подтверди почту", style = MaterialTheme.typography.titleLarge)
+    Text("\uD83D\uDCE7 Подтверди почту", style = MaterialTheme.typography.titleLarge)
     Text("Мы отправили письмо на $email. Открой его и нажми на ссылку, потом вернись сюда.", textAlign = TextAlign.Start)
     Button(onClick = vm::check, enabled = !vm.busy, modifier = Modifier.fillMaxWidth().height(50.dp)) { Text("Я подтвердил(а)") }
     OutlinedButton(onClick = vm::resend, enabled = !vm.busy, modifier = Modifier.fillMaxWidth()) { Text("Отправить письмо ещё раз") }
@@ -183,18 +185,26 @@ private fun VerifyForm(email: String, vm: AuthViewModel) {
 private fun ProfileForm(s: AuthState.NeedProfile, vm: AuthViewModel) {
     var first by rememberSaveable(s.email) { mutableStateOf(s.first) }
     var last by rememberSaveable(s.email) { mutableStateOf(s.last) }
-    Text("👤 Как тебя зовут?", style = MaterialTheme.typography.titleLarge)
+    var terms by rememberSaveable(s.email) { mutableStateOf(false) }
+    var pd by rememberSaveable(s.email) { mutableStateOf(false) }
+    if (s.consentOnly) {
+        Text("Обновились условия", style = MaterialTheme.typography.titleLarge)
+        Text("Чтобы продолжить, прими соглашение и дай согласие на обработку данных.", style = MaterialTheme.typography.bodySmall)
+    } else {
+        Text("\uD83D\uDC64 Как тебя зовут?", style = MaterialTheme.typography.titleLarge)
+    }
     Text(s.email, style = MaterialTheme.typography.bodySmall)
-    OutlinedTextField(first, { first = it }, label = { Text("Настоящее имя") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(last, { last = it }, label = { Text("Настоящая фамилия") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    Warning("⚠ За ненастоящие имя и фамилию аккаунт блокируется. Имя видят одноклассники и админ.")
-    Button(onClick = { vm.saveProfile(first, last) }, enabled = !vm.busy, modifier = Modifier.fillMaxWidth().height(50.dp)) { Text("Продолжить") }
+    OutlinedTextField(first, { first = it }, label = { Text("Имя") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(last, { last = it }, label = { Text("Фамилия") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    Warning("Имя и фамилию видят одноклассники и администратор класса.")
+    ConsentChecks(terms, { terms = it }, pd, { pd = it })
+    Button(onClick = { vm.saveProfile(first, last, terms && pd) }, enabled = !vm.busy && terms && pd, modifier = Modifier.fillMaxWidth().height(50.dp)) { Text("Продолжить") }
     TextButton(onClick = vm::logout) { Text("Выйти") }
 }
 
 @Composable
 private fun BlockedForm(s: AuthState.Blocked, vm: AuthViewModel) {
-    Text("⛔ Аккаунт заблокирован", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.error)
+    Text("\u26D4 Аккаунт заблокирован", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.error)
     Text(s.email)
     Text("Причина: ${s.reason}")
     Warning("Если это ошибка — напиши администратору класса.")

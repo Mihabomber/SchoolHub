@@ -53,6 +53,7 @@ data class UserProfile(
     val lastSeen: Long = 0,
     val appVersion: String = "",
     val device: String = "",
+    val consentVersion: Int = 0,
 ) {
     val fullName: String get() = "$firstName $lastName".trim()
     val isAdmin: Boolean get() = role == "admin" || email.lowercase() in Owners.emails
@@ -71,6 +72,7 @@ fun DocumentSnapshot.toProfile() = UserProfile(
     lastSeen = getLong("lastSeen") ?: 0,
     appVersion = getString("appVersion").orEmpty(),
     device = getString("device").orEmpty(),
+    consentVersion = (getLong("consentVersion") ?: 0L).toInt(),
 )
 
 sealed interface AuthState {
@@ -78,27 +80,34 @@ sealed interface AuthState {
     data object NotConfigured : AuthState
     data object SignedOut : AuthState
     data class VerifyEmail(val email: String) : AuthState
-    data class NeedProfile(val email: String, val first: String, val last: String) : AuthState
+    /** consentOnly = имя уже есть, нужно только принять (новые) условия. */
+    data class NeedProfile(val email: String, val first: String, val last: String, val consentOnly: Boolean = false) : AuthState
     data class Blocked(val email: String, val reason: String) : AuthState
     data class Ready(val profile: UserProfile) : AuthState
 }
 
-/** Проверки «похоже ли на настоящие данные». Имя проверяет и админ — фейки блокируются. */
+/**
+ * Проверка формата. Настоящие ли имя и фамилия, не проверяется,
+ * и за это аккаунт не блокируется.
+ */
 object Validators {
-    private val nameRe = Regex("^[А-ЯЁ][а-яё]+(-[А-ЯЁ][а-яё]+)?$|^[A-Z][a-z]+(-[A-Z][a-z]+)?$")
-    private val fake = setOf("тест", "test", "admin", "админ", "user", "юзер", "qwerty", "аноним", "anon", "noname", "имя", "фамилия", "name")
-    private val tempMail = listOf("mailinator", "tempmail", "temp-mail", "10minutemail", "guerrillamail", "yopmail", "trashmail", "sharklasers", "dropmail", "getnada", "maildrop")
+    private val nameRe = Regex("^\\p{L}[\\p{L}' -]*$")
+    private val tempMail = listOf(
+        "mailinator", "tempmail", "temp-mail", "10minutemail", "guerrillamail", "yopmail",
+        "trashmail", "sharklasers", "dropmail", "getnada", "maildrop",
+    )
 
-    fun normalizeName(s: String) = s.trim().lowercase().split("-").joinToString("-") { p -> p.replaceFirstChar { it.uppercase() } }
+    fun normalizeName(s: String): String =
+        s.trim().replace(Regex("\\s+"), " ").split(" ").joinToString(" ") { w ->
+            w.split("-").joinToString("-") { p -> p.lowercase().replaceFirstChar { it.uppercase() } }
+        }
 
     fun name(first: String, last: String): String? {
         val f = normalizeName(first); val l = normalizeName(last)
         return when {
-            f.length < 2 || l.length < 2 -> "Имя и фамилия — минимум 2 буквы"
-            f.length > 30 || l.length > 30 -> "Слишком длинное имя или фамилия"
-            !nameRe.matches(f) || !nameRe.matches(l) -> "Только буквы одного алфавита, без цифр, пробелов и смайлов"
-            f.lowercase() in fake || l.lowercase() in fake -> "Укажи настоящие имя и фамилию"
-            f.toSet().size == 1 || l.toSet().size == 1 -> "Укажи настоящие имя и фамилию"
+            f.isEmpty() || l.isEmpty() -> "Введи имя и фамилию"
+            f.length > 40 || l.length > 40 -> "Имя или фамилия слишком длинные (до 40 символов)"
+            !nameRe.matches(f) || !nameRe.matches(l) -> "В имени и фамилии можно использовать буквы, пробел, дефис и апостроф"
             else -> null
         }
     }
@@ -107,7 +116,7 @@ object Validators {
         val v = e.trim().lowercase()
         return when {
             !Patterns.EMAIL_ADDRESS.matcher(v).matches() -> "Неверный адрес почты"
-            tempMail.any { v.substringAfter('@').contains(it) } -> "Временные почты запрещены"
+            tempMail.any { v.substringAfter('@').contains(it) } -> "Временные почты не подходят: письмо с подтверждением может не дойти"
             else -> null
         }
     }
@@ -124,6 +133,7 @@ object Validators {
  * Аккаунты на Firebase: Authentication (почта+пароль, Google, Apple) + Firestore (профиль, роль, блокировка).
  * Пароли хранит только Firebase в виде хеша — их не видит никто, даже админ.
  * Сессия переживает обновления приложения (тот же пакет и подпись).
+ * Согласие на обработку ПД (152-ФЗ) хранится в профиле: consentVersion и consentAt.
  */
 class AuthRepository(
     private val context: Context,
@@ -158,7 +168,8 @@ class AuthRepository(
             detach(); _state.value = AuthState.SignedOut; return
         }
         val email = u.email.orEmpty().lowercase()
-        val byPassword = u.providerData.any { it.providerId == "password" } && u.providerData.none { it.providerId == "google.com" || it.providerId == "apple.com" }
+        val byPassword = u.providerData.any { it.providerId == "password" } &&
+            u.providerData.none { it.providerId == "google.com" || it.providerId == "apple.com" }
         if (byPassword && !u.isEmailVerified) { detach(); _state.value = AuthState.VerifyEmail(email); return }
         if (listenedUid == u.uid) { evaluate(); return }
         detach()
@@ -196,6 +207,7 @@ class AuthRepository(
                 AuthState.NeedProfile(email, prefs.getString("sug_first", null) ?: parts.getOrElse(0) { "" },
                     prefs.getString("sug_last", null) ?: parts.drop(1).joinToString(" "))
             }
+            d.consentVersion < Consent.VERSION -> AuthState.NeedProfile(email, d.firstName, d.lastName, consentOnly = true)
             else -> {
                 if (settings.userName.value != d.fullName) settings.setUserName(d.fullName)
                 stats.email = d.email
@@ -219,18 +231,21 @@ class AuthRepository(
     }
 
     private fun cache(p: UserProfile) {
-        prefs.edit().putString("p_${p.uid}", listOf(p.email, p.firstName, p.lastName, p.role, p.blocked.toString(), p.blockReason).joinToString("\u0001")).apply()
+        prefs.edit().putString("p_${p.uid}", listOf(p.email, p.firstName, p.lastName, p.role, p.blocked.toString(), p.blockReason,
+            p.consentVersion.toString()).joinToString("\u0001")).apply()
     }
 
     private fun cachedProfile(uid: String): UserProfile? {
         val v = prefs.getString("p_$uid", null)?.split("\u0001") ?: return null
         if (v.size < 6) return null
-        return UserProfile(uid, v[0], v[1], v[2], v[3], v[4].toBoolean(), v[5])
+        return UserProfile(uid, v[0], v[1], v[2], v[3], v[4].toBoolean(), v[5],
+            consentVersion = v.getOrNull(6)?.toIntOrNull() ?: 0)
     }
 
     // ---------- Действия (возвращают текст ошибки или null) ----------
 
-    suspend fun register(first: String, last: String, email: String, pass: String): String? {
+    suspend fun register(first: String, last: String, email: String, pass: String, consent: Boolean = false): String? {
+        if (!consent) return Consent.REQUIRED
         Validators.name(first, last)?.let { return it }
         Validators.email(email)?.let { return it }
         Validators.password(pass)?.let { return it }
@@ -283,7 +298,8 @@ class AuthRepository(
         }
     }
 
-    suspend fun saveProfile(first: String, last: String): String? {
+    suspend fun saveProfile(first: String, last: String, consent: Boolean = false): String? {
+        if (!consent) return Consent.REQUIRED
         Validators.name(first, last)?.let { return it }
         val u = auth.currentUser ?: return "Сначала войди"
         val provider = u.providerData.map { it.providerId }.firstOrNull { it != "firebase" } ?: "password"
@@ -293,11 +309,13 @@ class AuthRepository(
         }
     }
 
+    /** Пишет профиль вместе с отметкой о согласии (вызывается только после согласия пользователя). */
     private suspend fun writeProfile(u: FirebaseUser, first: String, last: String, provider: String, create: Boolean) {
         val now = System.currentTimeMillis()
         val ref = db.collection("users").document(u.uid)
         val base = mapOf("firstName" to first, "lastName" to last, "provider" to provider, "lastSeen" to now,
-            "appVersion" to BuildConfig.VERSION_NAME, "device" to "${Build.MANUFACTURER} ${Build.MODEL}", "deviceId" to settings.deviceId)
+            "appVersion" to BuildConfig.VERSION_NAME, "device" to "${Build.MANUFACTURER} ${Build.MODEL}", "deviceId" to settings.deviceId,
+            "consentVersion" to Consent.VERSION, "consentAt" to now)
         if (create) ref.set(base + mapOf("email" to u.email.orEmpty().lowercase(), "role" to "user", "blocked" to false,
             "blockReason" to "", "createdAt" to now)).await()
         else ref.set(base, SetOptions.merge()).await()
