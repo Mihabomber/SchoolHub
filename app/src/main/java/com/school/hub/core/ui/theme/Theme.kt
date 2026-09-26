@@ -6,11 +6,13 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -41,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 val Indigo = Color(0xFF5B4CF0)
 val Pink = Color(0xFFFF4D8D)
@@ -58,40 +61,39 @@ object AppGradients {
 
 private val LightColors = lightColorScheme(
     primary = Indigo, onPrimary = Color.White,
-    primaryContainer = Color(0xFFE3DFFF), onPrimaryContainer = Color(0xFF16006E),
+    primaryContainer = Color(0xFFE6E2FF), onPrimaryContainer = Color(0xFF16006E),
     secondary = Pink, onSecondary = Color.White,
-    secondaryContainer = Color(0xFFFFD9E3), onSecondaryContainer = Color(0xFF3E001D),
+    secondaryContainer = Color(0xFFFFDDE7), onSecondaryContainer = Color(0xFF3E001D),
     tertiary = Teal, onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFB8F5EA), onTertiaryContainer = Color(0xFF00201B),
-    background = Color(0xFFF7F5FF), onBackground = Color(0xFF1B1B21),
-    surface = Color(0xFFF7F5FF), onSurface = Color(0xFF1B1B21),
-    surfaceVariant = Color(0xFFE5E1EC), onSurfaceVariant = Color(0xFF5B5966),
-    outline = Color(0xFF8A8894), outlineVariant = Color(0xFFD6D3E0),
+    tertiaryContainer = Color(0xFFC2F7EC), onTertiaryContainer = Color(0xFF00201B),
+    background = Color(0xFFF8F7FC), onBackground = Color(0xFF17161D),
+    surface = Color(0xFFF8F7FC), onSurface = Color(0xFF17161D),
+    surfaceVariant = Color(0xFFE7E4EF), onSurfaceVariant = Color(0xFF5A5866),
+    outline = Color(0xFF8C8A96), outlineVariant = Color(0xFFDCD9E5),
     surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFF0EDFC),
-    surfaceContainer = Color(0xFFEAE7F7),
-    surfaceContainerHigh = Color(0xFFE4E1F2),
-    surfaceContainerHighest = Color(0xFFDEDBEC),
+    surfaceContainerLow = Color(0xFFFFFFFF),
+    surfaceContainer = Color(0xFFF1EFF8),
+    surfaceContainerHigh = Color(0xFFEBE9F4),
+    surfaceContainerHighest = Color(0xFFE4E2EE),
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFC5BFFF), onPrimary = Color(0xFF2A1A9E),
-    primaryContainer = Color(0xFF4133C9), onPrimaryContainer = Color(0xFFE3DFFF),
+    primary = Color(0xFFBDB5FF), onPrimary = Color(0xFF24168F),
+    primaryContainer = Color(0xFF3F31C4), onPrimaryContainer = Color(0xFFE6E2FF),
     secondary = Color(0xFFFFB1C8), onSecondary = Color(0xFF5E1133),
     secondaryContainer = Color(0xFF7B2949), onSecondaryContainer = Color(0xFFFFD9E3),
     tertiary = Color(0xFF6FF7DE), onTertiary = Color(0xFF00382F),
     tertiaryContainer = Color(0xFF005045), onTertiaryContainer = Color(0xFFB8F5EA),
-    background = Color(0xFF121218), onBackground = Color(0xFFE5E1EA),
-    surface = Color(0xFF121218), onSurface = Color(0xFFE5E1EA),
-    surfaceVariant = Color(0xFF47464F), onSurfaceVariant = Color(0xFFC8C5D0),
-    outline = Color(0xFF928F9A), outlineVariant = Color(0xFF47464F),
-    surfaceContainerLowest = Color(0xFF0C0C12),
-    surfaceContainerLow = Color(0xFF1B1A22),
-    surfaceContainer = Color(0xFF1F1E27),
-    surfaceContainerHigh = Color(0xFF2A2931),
-    surfaceContainerHighest = Color(0xFF35343C),
+    background = Color(0xFF0F0E14), onBackground = Color(0xFFE8E5EE),
+    surface = Color(0xFF0F0E14), onSurface = Color(0xFFE8E5EE),
+    surfaceVariant = Color(0xFF3F3D49), onSurfaceVariant = Color(0xFFC9C6D2),
+    outline = Color(0xFF8F8C99), outlineVariant = Color(0xFF34323D),
+    surfaceContainerLowest = Color(0xFF0A0910),
+    surfaceContainerLow = Color(0xFF17161E),
+    surfaceContainer = Color(0xFF1C1B24),
+    surfaceContainerHigh = Color(0xFF25242E),
+    surfaceContainerHighest = Color(0xFF302F39),
 )
-
 
 val AppSans = FontFamily(
     Font(R.font.app_sans_regular, FontWeight.Normal),
@@ -115,22 +117,26 @@ val FontChoices = listOf("Фирменный", "С засечками", "Мон�
 
 private fun typography(family: FontFamily?): Typography {
     val t = Typography()
-    fun TextStyle.f(w: FontWeight? = null) = copy(fontFamily = family ?: fontFamily, fontWeight = w ?: fontWeight)
+    fun TextStyle.f(w: FontWeight? = null, ls: Float? = null) = copy(
+        fontFamily = family ?: fontFamily,
+        fontWeight = w ?: fontWeight,
+        letterSpacing = ls?.sp ?: letterSpacing,
+    )
     return t.copy(
-        displayLarge = t.displayLarge.f(FontWeight.ExtraBold), displayMedium = t.displayMedium.f(FontWeight.ExtraBold), displaySmall = t.displaySmall.f(FontWeight.Bold),
-        headlineLarge = t.headlineLarge.f(FontWeight.ExtraBold), headlineMedium = t.headlineMedium.f(FontWeight.ExtraBold), headlineSmall = t.headlineSmall.f(FontWeight.Bold),
-        titleLarge = t.titleLarge.f(FontWeight.Bold), titleMedium = t.titleMedium.f(FontWeight.SemiBold), titleSmall = t.titleSmall.f(FontWeight.SemiBold),
-        bodyLarge = t.bodyLarge.f(), bodyMedium = t.bodyMedium.f(), bodySmall = t.bodySmall.f(),
+        displayLarge = t.displayLarge.f(FontWeight.ExtraBold, -1.0f), displayMedium = t.displayMedium.f(FontWeight.ExtraBold, -0.8f), displaySmall = t.displaySmall.f(FontWeight.Bold, -0.5f),
+        headlineLarge = t.headlineLarge.f(FontWeight.ExtraBold, -0.6f), headlineMedium = t.headlineMedium.f(FontWeight.ExtraBold, -0.4f), headlineSmall = t.headlineSmall.f(FontWeight.Bold, -0.2f),
+        titleLarge = t.titleLarge.f(FontWeight.Bold, -0.2f), titleMedium = t.titleMedium.f(FontWeight.SemiBold, 0f), titleSmall = t.titleSmall.f(FontWeight.SemiBold),
+        bodyLarge = t.bodyLarge.f().copy(lineHeight = 25.sp), bodyMedium = t.bodyMedium.f().copy(lineHeight = 21.sp), bodySmall = t.bodySmall.f(),
         labelLarge = t.labelLarge.f(FontWeight.SemiBold), labelMedium = t.labelMedium.f(FontWeight.Medium), labelSmall = t.labelSmall.f(FontWeight.Medium),
     )
 }
 
 private val AppShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(18.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(32.dp),
+    extraSmall = RoundedCornerShape(10.dp),
+    small = RoundedCornerShape(14.dp),
+    medium = RoundedCornerShape(20.dp),
+    large = RoundedCornerShape(26.dp),
+    extraLarge = RoundedCornerShape(34.dp),
 )
 
 /** Включён ли режим «жидкое стекло». */
@@ -202,7 +208,7 @@ fun LiquidBackground(dark: Boolean, content: @Composable () -> Unit) {
     }
 }
 
-/** Карточка: в режиме стекла — матовая полупрозрачная с бликом по краю, иначе обычная Material-карточка. */
+/** Карточка: в режиме стекла — матовая полупрозрачная с бликом по краю, иначе аккуратная плоская карточка с тонкой рамкой. */
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
@@ -212,7 +218,12 @@ fun GlassCard(
 ) {
     val glass = LocalGlass.current || forceGlass
     if (!glass) {
-        Card(modifier, shape = shape) { content() }
+        Card(
+            modifier,
+            shape = shape,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = .7f)),
+        ) { content() }
         return
     }
     val dark = LocalDark.current

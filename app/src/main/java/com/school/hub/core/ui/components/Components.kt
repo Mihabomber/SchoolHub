@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -48,6 +49,12 @@ fun GradientIcon(icon: ImageVector, gradient: List<Color>, size: Dp = 44.dp, mod
             .background(Brush.linearGradient(gradient)),
         contentAlignment = Alignment.Center,
     ) {
+        // мягкий блик сверху — иконка выглядит объёмнее
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.28f), Color.Transparent, Color.Black.copy(alpha = 0.10f))),
+            ),
+        )
         Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.55f))
     }
 }
@@ -57,9 +64,12 @@ fun EmptyState(emoji: String, title: String, text: String, modifier: Modifier = 
     Column(
         modifier = modifier.fillMaxWidth().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(emoji, fontSize = 64.sp)
+        Box(
+            Modifier.size(112.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)),
+            contentAlignment = Alignment.Center,
+        ) { Text(emoji, fontSize = 56.sp) }
         Text(title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
         Text(
             text, style = MaterialTheme.typography.bodyMedium,
